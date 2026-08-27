@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-08-27T21:54:40.291226+00:00",
+  "comparable": {
+    "body": {
+      "edges": [],
+      "nodes": [
+        {
+          "endLine": 5,
+          "filePath": "hello.go",
+          "id": "hello.go:Add",
+          "kind": "function",
+          "name": "Add",
+          "startLine": 3
+        },
+        {
+          "endLine": 2,
+          "filePath": "hello.py",
+          "id": "hello.py:add",
+          "kind": "function",
+          "name": "add",
+          "startLine": 1
+        }
+      ]
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "smoke",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "rest-graph"
+}

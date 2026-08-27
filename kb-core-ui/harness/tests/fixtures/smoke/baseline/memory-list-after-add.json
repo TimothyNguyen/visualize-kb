@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-08-27T21:54:41.016396+00:00",
+  "comparable": {
+    "exit_code": 0,
+    "stdout": ""
+  },
+  "engine": "go",
+  "fixture": "smoke",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path",
+    "generated_id",
+    "timestamp"
+  ],
+  "operation_id": "memory-list-after-add"
+}
