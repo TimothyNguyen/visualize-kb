@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "hzOA7gvSUYQ=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\quynh\\OneDrive\\Desktop\\swe-workspace\\op-kb\\kb-core\\tests\\fixtures\\xaml_viewmodel\\App.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\quynh\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.27\\microsoft.netcore.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\quynh\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.27\\microsoft.windowsdesktop.app.ref.8.0.27.nupkg.sha512",
+    "C:\\Users\\quynh\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.27\\microsoft.aspnetcore.app.ref.8.0.27.nupkg.sha512"
+  ],
+  "logs": []
+}

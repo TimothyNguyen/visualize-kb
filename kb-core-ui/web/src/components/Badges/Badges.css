@@ -1,0 +1,41 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.kind-badge {
+  padding: 3px 6px;
+  color: var(--badge-color);
+  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.lang-badge {
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+
+.lang-badge.lang-typescript,
+.lang-badge.lang-javascript {
+  color: #4f9eff;
+}
+
+.lang-badge.lang-go {
+  color: #4fd6cd;
+}
+
+.lang-badge.lang-python {
+  color: #f0cc6b;
+}

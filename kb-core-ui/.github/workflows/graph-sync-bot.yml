@@ -1,0 +1,30 @@
+name: Graph Sync Bot
+
+# Re-indexes the code graph and verifies its integrity on every push and PR.
+# Needs no AI and no secrets — it's pure graph work — so unlike the PR review
+# bot it runs unconditionally and can gate merges on graph integrity.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  graph-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build kb-core-ui
+        run: go build -o kb-core-ui ./cmd/kb-core-ui
+
+      - name: Re-index and check graph integrity
+        # Fails the job if the graph has dangling edges (a real integrity
+        # defect). Does NOT use --fail-on-stale here, since the graph DB
+        # isn't committed to the repo — a fresh index every run is expected.
+        run: ./kb-core-ui bot graph-sync --repo .

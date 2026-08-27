@@ -1,0 +1,234 @@
+.symbol-node {
+  min-width: 170px;
+  max-width: 240px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1.5px solid var(--node-color);
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+
+.symbol-node.center {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 35%, transparent);
+}
+
+/* Entry points (nothing calls them — likely a starting position: main,
+   route handler, page component) are pulled forward visually. Leaves
+   (call nothing themselves — pure/utility dependencies) are pushed back,
+   so the eye lands on "where things start" first. */
+.symbol-node.role-entry {
+  border-width: 2.5px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 22%, transparent), 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.symbol-node.role-leaf {
+  opacity: 0.72;
+}
+
+.symbol-node.dimmed {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.symbol-node.dimmed:hover {
+  opacity: 0.8;
+}
+
+.symbol-node.expanded {
+  max-width: 320px;
+}
+
+.symbol-node-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.symbol-node-headtext {
+  min-width: 0;
+  flex: 1;
+}
+
+.symbol-node-open {
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+
+.symbol-node-open:hover {
+  color: var(--text);
+  border-color: var(--node-color);
+}
+
+.symbol-node-kind {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--node-color);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.symbol-node-role-badge {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--node-color) 30%, transparent);
+  color: var(--text);
+}
+
+.symbol-node-name {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.symbol-node-file {
+  font-size: 10px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.symbol-node-expanded {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  cursor: default;
+}
+
+.symbol-node-expanded-status {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.symbol-node-expanded-status.error {
+  color: var(--danger);
+}
+
+.symbol-node-doc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+
+.symbol-node-io {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.symbol-node-io-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-bottom: 2px;
+}
+
+.symbol-node-io-empty {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.symbol-node-io-row {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.symbol-node-io-name {
+  color: var(--text);
+}
+
+.symbol-node-io-type {
+  color: var(--node-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.symbol-node-route {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.symbol-node-route-handler {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+}
+
+.symbol-node-route-handler:hover {
+  border-color: var(--node-color);
+}
+
+.symbol-node-route-handler-kind {
+  flex: none;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.symbol-node-route-handler-name {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.symbol-node-expanded-open {
+  margin-top: 8px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.symbol-node-expanded-open:hover {
+  color: var(--text);
+  border-color: var(--node-color);
+}
+
+.react-flow__handle {
+  background: var(--border-strong);
+  width: 6px;
+  height: 6px;
+  border: none;
+}
