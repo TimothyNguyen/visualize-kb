@@ -1,0 +1,27 @@
+is_global = true
+build_property.TargetFramework = net8.0
+build_property.TargetFrameworkIdentifier = .NETCoreApp
+build_property.TargetFrameworkVersion = v8.0
+build_property.TargetPlatformMinVersion = 
+build_property.UsingMicrosoftNETSdkWeb = true
+build_property.ProjectTypeGuids = 
+build_property.InvariantGlobalization = 
+build_property.PlatformNeutralAssembly = 
+build_property.EnforceExtendedAnalyzerRules = 
+build_property._SupportedPlatformList = Linux,macOS,Windows
+build_property.RootNamespace = sample
+build_property.RootNamespace = sample
+build_property.ProjectDir = C:\Users\quynh\OneDrive\Desktop\swe-workspace\op-kb\kb-core\tests\fixtures\
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.RazorLangVersion = 8.0
+build_property.SupportLocalizedComponentNames = 
+build_property.GenerateRazorMetadataSourceChecksumAttributes = 
+build_property.MSBuildProjectDirectory = C:\Users\quynh\OneDrive\Desktop\swe-workspace\op-kb\kb-core\tests\fixtures
+build_property._RazorSourceGeneratorDebug = 
+build_property.EffectiveAnalysisLevelStyle = 8.0
+build_property.EnableCodeStyleSeverity = 
+
+[C:/Users/quynh/OneDrive/Desktop/swe-workspace/op-kb/kb_core/tests/fixtures/sample.razor]
+build_metadata.AdditionalFiles.TargetPath = c2FtcGxlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 

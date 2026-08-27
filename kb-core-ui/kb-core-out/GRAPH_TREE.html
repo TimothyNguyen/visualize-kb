@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>KB Core UI — kb-core tree viewer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      margin: 20px 0 0 24px;
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: #1e3a56;
+    }
+    .controls {
+      margin: 20px 0 15px 24px;
+    }
+    button {
+      margin-right: 10px;
+      padding: 8px 18px;
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s ease-in-out;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:active {
+      background: #004085;
+    }
+    #tree-container {
+      width: calc(100vw - 48px); /* Adjust for body margin/padding */
+      height: 85vh;
+      overflow: auto;
+      border-radius: 8px;
+      background: #fff;
+      margin-left: 24px;
+      margin-right: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border: 1px solid #ddd;
+    }
+    svg {
+      background: #fff;
+      border-radius: 8px;
+      display: block; /* Important for D3 */
+    }
+    .node circle {
+      stroke-width: 2.5px;
+    }
+    .node text { /* Base style for the <text> container */
+      font: 13px 'Segoe UI', sans-serif;
+      paint-order: stroke fill; /* Ensures text is readable over lines */
+      stroke: #fff; /* White halo */
+      stroke-width: 3px; /* Halo thickness */
+      stroke-linejoin: round;
+      stroke-opacity: 0.85; /* Halo opacity */
+    }
+    .link {
+      fill: none;
+      stroke-opacity: 0.7;
+      stroke-width: 2px;
+    }
+  </style>
+</head>
+<body>
+  <h1>KB Core UI — Knowledge Graph</h1>
+  <div class="controls">
+    <button onclick="expandAll()">Expand All</button>
+    <button onclick="collapseAll()">Collapse All</button>
+    <button onclick="resetView()">Reset View</button>
+  </div>
+  <div id="tree-container">
+    <svg id="tree-svg" width="6000" height="8000"></svg>
+  </div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    const initialJsonData = {"name":"KB Core UI","total_count":561,"children":[{"name":"bots","total_count":47,"children":[{"name":"anomaly_scan.py","total_count":1,"children":[{"name":"main()","total_count":1,"children":[]}]},{"name":"commit_check.py","total_count":2,"children":[{"name":"main()","total_count":1,"children":[]},{"name":"report()","total_count":1,"children":[]}]},{"name":"common.py","total_count":17,"children":[{"name":".__enter__()","total_count":1,"children":[]},{"name":".__exit__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".ask()","total_count":1,"children":[]},{"name":"build_mcp_config()","total_count":1,"children":[]},{"name":"Convenience context for a bot run: locates the binary, preflights, indexes, and\u2026","total_count":1,"children":[]},{"name":"ensure_indexed()","total_count":1,"children":[]},{"name":"extract_json()","total_count":1,"children":[]},{"name":"find_kb_core_ui_bin()","total_count":1,"children":[]},{"name":"gh()","total_count":1,"children":[]},{"name":"preflight_or_exit()","total_count":1,"children":[]},{"name":"Pull the first fenced ```json block (or the whole thing) and parse it. Bots ask\u2026","total_count":1,"children":[]},{"name":"Run a headless claude session with kb-core-ui's MCP tools and return the\u2026","total_count":1,"children":[]},{"name":"Run shared preflight checks and exit(2) with a clear message if a link this bot\u2026","total_count":1,"children":[]},{"name":"run()","total_count":1,"children":[]},{"name":"run_claude()","total_count":1,"children":[]},{"name":"Task","total_count":1,"children":[]}]},{"name":"feature_verdict.py","total_count":2,"children":[{"name":"main()","total_count":1,"children":[]},{"name":"render()","total_count":1,"children":[]}]},{"name":"pr_review.py","total_count":9,"children":[{"name":"build_mcp_config()","total_count":1,"children":[]},{"name":"ensure_indexed()","total_count":1,"children":[]},{"name":"extract_findings()","total_count":1,"children":[]},{"name":"find_kb_core_ui_bin()","total_count":1,"children":[]},{"name":"format_comment()","total_count":1,"children":[]},{"name":"gh()","total_count":1,"children":[]},{"name":"main()","total_count":1,"children":[]},{"name":"run()","total_count":1,"children":[]},{"name":"run_claude_review()","total_count":1,"children":[]}]},{"name":"preflight.py","total_count":13,"children":[{"name":"_run()","total_count":1,"children":[]},{"name":"Check","total_count":1,"children":[]},{"name":"check_claude_auth()","total_count":1,"children":[]},{"name":"check_claude_installed()","total_count":1,"children":[]},{"name":"check_claude_mcp()","total_count":1,"children":[]},{"name":"check_gh_auth()","total_count":1,"children":[]},{"name":"check_gh_installed()","total_count":1,"children":[]},{"name":"check_python()","total_count":1,"children":[]},{"name":"find_kb_core_ui_bin()","total_count":1,"children":[]},{"name":"main()","total_count":1,"children":[]},{"name":"run_checks()","total_count":1,"children":[]},{"name":"The critical check: can we actually get a completion out of the claude CLI\u2026","total_count":1,"children":[]},{"name":"Verify the app can hand its own MCP server to a claude session \u2014 the core\u2026","total_count":1,"children":[]}]},{"name":"test_writer.py","total_count":1,"children":[{"name":"main()","total_count":1,"children":[]}]},{"name":"triage.py","total_count":2,"children":[{"name":"main()","total_count":1,"children":[]},{"name":"render()","total_count":1,"children":[]}]}]},{"name":"cmd","total_count":26,"children":[{"name":"kb-core-ui","total_count":26,"children":[{"name":"bot.go","total_count":7,"children":[{"name":"hasRepoFlag()","total_count":1,"children":[]},{"name":"locateBotsDir()","total_count":1,"children":[]},{"name":"newBotCmd()","total_count":1,"children":[]},{"name":"newBotDoctorCmd()","total_count":1,"children":[]},{"name":"newBotPassthroughCmd()","total_count":1,"children":[]},{"name":"newBotPRReviewCmd()","total_count":1,"children":[]},{"name":"runBotScript()","total_count":1,"children":[]}]},{"name":"bot_graphsync.go","total_count":2,"children":[{"name":"newBotGraphSyncCmd()","total_count":1,"children":[]},{"name":"printHealth()","total_count":1,"children":[]}]},{"name":"common.go","total_count":3,"children":[{"name":"locateWebDir()","total_count":1,"children":[]},{"name":"openStoreAndIndex()","total_count":1,"children":[]},{"name":"resolveRepoPath()","total_count":1,"children":[]}]},{"name":"main.go","total_count":1,"children":[{"name":"main()","total_count":1,"children":[]}]},{"name":"mcp.go","total_count":1,"children":[{"name":"newMCPCmd()","total_count":1,"children":[]}]},{"name":"memory.go","total_count":9,"children":[{"name":"memoryDBPath()","total_count":1,"children":[]},{"name":"newMemoryAddCmd()","total_count":1,"children":[]},{"name":"newMemoryCmd()","total_count":1,"children":[]},{"name":"newMemoryListCmd()","total_count":1,"children":[]},{"name":"newMemoryRemoveCmd()","total_count":1,"children":[]},{"name":"newMemorySearchCmd()","total_count":1,"children":[]},{"name":"openMemory()","total_count":1,"children":[]},{"name":"truncate()","total_count":1,"children":[]},{"name":"validKind()","total_count":1,"children":[]}]},{"name":"parse.go","total_count":1,"children":[{"name":"newParseCmd()","total_count":1,"children":[]}]},{"name":"serve.go","total_count":2,"children":[{"name":"newServeCmd()","total_count":1,"children":[]},{"name":"openBrowser()","total_count":1,"children":[]}]}]}]},{"name":"go.mod","total_count":1,"children":[{"name":"kb-core-ui","total_count":1,"children":[]}]},{"name":"internal","total_count":244,"children":[{"name":"bots","total_count":36,"children":[{"name":"registry.go","total_count":3,"children":[{"name":"ArgDef","total_count":1,"children":[]},{"name":"Def","total_count":1,"children":[]},{"name":"Lookup()","total_count":1,"children":[]}]},{"name":"runner.go","total_count":20,"children":[{"name":".Error()","total_count":1,"children":[]},{"name":".Error()","total_count":1,"children":[]},{"name":".execute()","total_count":1,"children":[]},{"name":".Get()","total_count":1,"children":[]},{"name":".List()","total_count":1,"children":[]},{"name":".snapshot()","total_count":1,"children":[]},{"name":".Start()","total_count":1,"children":[]},{"name":".String()","total_count":1,"children":[]},{"name":".Write()","total_count":1,"children":[]},{"name":".WriteString()","total_count":1,"children":[]},{"name":"buildArgs()","total_count":1,"children":[]},{"name":"copyRun()","total_count":1,"children":[]},{"name":"ErrMissingArg","total_count":1,"children":[]},{"name":"ErrUnknownBot","total_count":1,"children":[]},{"name":"isTruthy()","total_count":1,"children":[]},{"name":"lockedWriter","total_count":1,"children":[]},{"name":"NewRunner()","total_count":1,"children":[]},{"name":"Run","total_count":1,"children":[]},{"name":"Runner","total_count":1,"children":[]},{"name":"RunSummary","total_count":1,"children":[]}]},{"name":"runner_test.go","total_count":13,"children":[{"name":"contains()","total_count":1,"children":[]},{"name":"fakeBin()","total_count":1,"children":[]},{"name":"indexOf()","total_count":1,"children":[]},{"name":"itoa()","total_count":1,"children":[]},{"name":"TestBuildArgsDryRunFalseOmitsFlag()","total_count":1,"children":[]},{"name":"TestBuildArgsNewBots()","total_count":1,"children":[]},{"name":"TestBuildArgsPositionalAndFlags()","total_count":1,"children":[]},{"name":"TestListNewestFirst()","total_count":1,"children":[]},{"name":"TestRunnerFailPropagatesExitCode()","total_count":1,"children":[]},{"name":"TestRunnerRejectsUnknownBot()","total_count":1,"children":[]},{"name":"TestRunnerRequiresRequiredArg()","total_count":1,"children":[]},{"name":"TestRunnerSucceeds()","total_count":1,"children":[]},{"name":"waitDone()","total_count":1,"children":[]}]}]},{"name":"graph","total_count":22,"children":[{"name":"builder.go","total_count":6,"children":[{"name":"Build()","total_count":1,"children":[]},{"name":"BuildFlat()","total_count":1,"children":[]},{"name":"dirOf()","total_count":1,"children":[]},{"name":"languageFamily()","total_count":1,"children":[]},{"name":"resolveCall()","total_count":1,"children":[]},{"name":"resolveParents()","total_count":1,"children":[]}]},{"name":"builder_test.go","total_count":6,"children":[{"name":"TestBuildResolvesCallsAndContains()","total_count":1,"children":[]},{"name":"TestResolveCallMatchesAcrossJSFamily()","total_count":1,"children":[]},{"name":"TestResolveCallNeverCrossesLanguageFamilies()","total_count":1,"children":[]},{"name":"TestResolveCallPrefersSameFileThenSameDir()","total_count":1,"children":[]},{"name":"TestResolveCallQualifiedNeverUsesRepoWideFallback()","total_count":1,"children":[]},{"name":"TestResolveParentsAcrossFilesInSamePackage()","total_count":1,"children":[]}]},{"name":"model.go","total_count":10,"children":[{"name":"Edge","total_count":1,"children":[]},{"name":"EdgeKind","total_count":1,"children":[]},{"name":"FileGraph","total_count":1,"children":[]},{"name":"Graph","total_count":1,"children":[]},{"name":"Param","total_count":1,"children":[]},{"name":"Symbol","total_count":1,"children":[]},{"name":"SymbolKind","total_count":1,"children":[]},{"name":"SymbolRef","total_count":1,"children":[]},{"name":"TreeNode","total_count":1,"children":[]},{"name":"UnresolvedCall","total_count":1,"children":[]}]}]},{"name":"indexer","total_count":7,"children":[{"name":"indexer.go","total_count":5,"children":[{"name":"contentHash()","total_count":1,"children":[]},{"name":"DefaultDBPath()","total_count":1,"children":[]},{"name":"EnsureDBDir()","total_count":1,"children":[]},{"name":"Index()","total_count":1,"children":[]},{"name":"Result","total_count":1,"children":[]}]},{"name":"indexer_test.go","total_count":2,"children":[{"name":"mustWrite()","total_count":1,"children":[]},{"name":"TestIndexScanReparseAndPrune()","total_count":1,"children":[]}]}]},{"name":"mcp","total_count":19,"children":[{"name":"server.go","total_count":13,"children":[{"name":"getCalleesHandler()","total_count":1,"children":[]},{"name":"getCallersHandler()","total_count":1,"children":[]},{"name":"getFileSliceHandler()","total_count":1,"children":[]},{"name":"getFileSymbolsHandler()","total_count":1,"children":[]},{"name":"getStatsHandler()","total_count":1,"children":[]},{"name":"getSymbolHandler()","total_count":1,"children":[]},{"name":"getTreeHandler()","total_count":1,"children":[]},{"name":"jsonResult()","total_count":1,"children":[]},{"name":"memoryAddHandler()","total_count":1,"children":[]},{"name":"memorySearchHandler()","total_count":1,"children":[]},{"name":"New()","total_count":1,"children":[]},{"name":"searchSymbolHandler()","total_count":1,"children":[]},{"name":"validMemoryKind()","total_count":1,"children":[]}]},{"name":"server_test.go","total_count":6,"children":[{"name":"callTool()","total_count":1,"children":[]},{"name":"contains()","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"setupWithMemory()","total_count":1,"children":[]},{"name":"TestMCPMemoryTools()","total_count":1,"children":[]},{"name":"TestMCPToolsEndToEnd()","total_count":1,"children":[]}]}]},{"name":"memory","total_count":44,"children":[{"name":"embedder.go","total_count":11,"children":[{"name":".Dim()","total_count":1,"children":[]},{"name":".Embed()","total_count":1,"children":[]},{"name":".Name()","total_count":1,"children":[]},{"name":"add()","total_count":1,"children":[]},{"name":"charTrigrams()","total_count":1,"children":[]},{"name":"Cosine()","total_count":1,"children":[]},{"name":"Embedder","total_count":1,"children":[]},{"name":"HashingEmbedder","total_count":1,"children":[]},{"name":"NewHashingEmbedder()","total_count":1,"children":[]},{"name":"stem()","total_count":1,"children":[]},{"name":"tokenize()","total_count":1,"children":[]}]},{"name":"memory_test.go","total_count":9,"children":[{"name":"newTestStore()","total_count":1,"children":[]},{"name":"TestAddAndSearch()","total_count":1,"children":[]},{"name":"TestEmbedderSimilarityRanking()","total_count":1,"children":[]},{"name":"TestEmbedderUnitLength()","total_count":1,"children":[]},{"name":"TestGetListRemove()","total_count":1,"children":[]},{"name":"TestSearchDropsZeroScore()","total_count":1,"children":[]},{"name":"TestSearchKindFilter()","total_count":1,"children":[]},{"name":"TestStemmingBridgesMorphology()","total_count":1,"children":[]},{"name":"titles()","total_count":1,"children":[]}]},{"name":"neural.go","total_count":7,"children":[{"name":".Dim()","total_count":1,"children":[]},{"name":".Embed()","total_count":1,"children":[]},{"name":".Name()","total_count":1,"children":[]},{"name":"EmbedderFromEnv()","total_count":1,"children":[]},{"name":"HTTPEmbedder","total_count":1,"children":[]},{"name":"NewHTTPEmbedder()","total_count":1,"children":[]},{"name":"parseDim()","total_count":1,"children":[]}]},{"name":"store.go","total_count":17,"children":[{"name":".Add()","total_count":1,"children":[]},{"name":".Close()","total_count":1,"children":[]},{"name":".Count()","total_count":1,"children":[]},{"name":".Get()","total_count":1,"children":[]},{"name":".List()","total_count":1,"children":[]},{"name":".Remove()","total_count":1,"children":[]},{"name":".Search()","total_count":1,"children":[]},{"name":"decodeVec()","total_count":1,"children":[]},{"name":"encodeVec()","total_count":1,"children":[]},{"name":"Entry","total_count":1,"children":[]},{"name":"Hit","total_count":1,"children":[]},{"name":"Kind","total_count":1,"children":[]},{"name":"makeID()","total_count":1,"children":[]},{"name":"Open()","total_count":1,"children":[]},{"name":"scanEntry()","total_count":1,"children":[]},{"name":"scanner","total_count":1,"children":[]},{"name":"Store","total_count":1,"children":[]}]}]},{"name":"parser","total_count":40,"children":[{"name":"golang.go","total_count":7,"children":[{"name":"goFunc()","total_count":1,"children":[]},{"name":"goReceiverType()","total_count":1,"children":[]},{"name":"goRoutes()","total_count":1,"children":[]},{"name":"goSignature()","total_count":1,"children":[]},{"name":"goSpecs()","total_count":1,"children":[]},{"name":"min()","total_count":1,"children":[]},{"name":"ParseGo()","total_count":1,"children":[]}]},{"name":"parser.go","total_count":12,"children":[{"name":"cleanComment()","total_count":1,"children":[]},{"name":"fieldChildren()","total_count":1,"children":[]},{"name":"LanguageFor()","total_count":1,"children":[]},{"name":"leadingComment()","total_count":1,"children":[]},{"name":"line1()","total_count":1,"children":[]},{"name":"namedChildren()","total_count":1,"children":[]},{"name":"nodeText()","total_count":1,"children":[]},{"name":"ParseFile()","total_count":1,"children":[]},{"name":"ParseFunc","total_count":1,"children":[]},{"name":"SupportedExtensions()","total_count":1,"children":[]},{"name":"symbolID()","total_count":1,"children":[]},{"name":"walk()","total_count":1,"children":[]}]},{"name":"parser_test.go","total_count":6,"children":[{"name":"findSym()","total_count":1,"children":[]},{"name":"symbolIDs()","total_count":1,"children":[]},{"name":"TestParseGo()","total_count":1,"children":[]},{"name":"TestParseGoRoutes()","total_count":1,"children":[]},{"name":"TestParsePython()","total_count":1,"children":[]},{"name":"TestParseTypeScript()","total_count":1,"children":[]}]},{"name":"python.go","total_count":4,"children":[{"name":"ParsePython()","total_count":1,"children":[]},{"name":"pyDocstring()","total_count":1,"children":[]},{"name":"pyFunc()","total_count":1,"children":[]},{"name":"pyHeaderLine()","total_count":1,"children":[]}]},{"name":"typescript.go","total_count":11,"children":[{"name":"jsClassMember()","total_count":1,"children":[]},{"name":"jsDecl()","total_count":1,"children":[]},{"name":"jsFunc()","total_count":1,"children":[]},{"name":"jsHeaderLine()","total_count":1,"children":[]},{"name":"jsParams()","total_count":1,"children":[]},{"name":"jsReturns()","total_count":1,"children":[]},{"name":"nonEmptyParam()","total_count":1,"children":[]},{"name":"ParseJavaScript()","total_count":1,"children":[]},{"name":"parseJSFamily()","total_count":1,"children":[]},{"name":"ParseTSX()","total_count":1,"children":[]},{"name":"ParseTypeScript()","total_count":1,"children":[]}]}]},{"name":"server","total_count":37,"children":[{"name":"bots.go","total_count":5,"children":[{"name":".handleBotRun()","total_count":1,"children":[]},{"name":".handleBotRunByID()","total_count":1,"children":[]},{"name":".handleBotRuns()","total_count":1,"children":[]},{"name":".handleBots()","total_count":1,"children":[]},{"name":"Server","total_count":1,"children":[]}]},{"name":"bots_test.go","total_count":3,"children":[{"name":"botTestServer()","total_count":1,"children":[]},{"name":"TestBotsDisabledWhenNoRunner()","total_count":1,"children":[]},{"name":"TestBotsEndpoints()","total_count":1,"children":[]}]},{"name":"memory.go","total_count":6,"children":[{"name":".handleMemoryAdd()","total_count":1,"children":[]},{"name":".handleMemoryDelete()","total_count":1,"children":[]},{"name":".handleMemoryList()","total_count":1,"children":[]},{"name":".handleMemorySearch()","total_count":1,"children":[]},{"name":"Server","total_count":1,"children":[]},{"name":"validMemKind()","total_count":1,"children":[]}]},{"name":"memory_test.go","total_count":2,"children":[{"name":"memServer()","total_count":1,"children":[]},{"name":"TestMemoryEndpoints()","total_count":1,"children":[]}]},{"name":"server.go","total_count":17,"children":[{"name":".handleFileSymbols()","total_count":1,"children":[]},{"name":".handleGraph()","total_count":1,"children":[]},{"name":".handleSearch()","total_count":1,"children":[]},{"name":".handleSource()","total_count":1,"children":[]},{"name":".handleStats()","total_count":1,"children":[]},{"name":".handleSubgraph()","total_count":1,"children":[]},{"name":".handleSymbols()","total_count":1,"children":[]},{"name":".handleTree()","total_count":1,"children":[]},{"name":".routes()","total_count":1,"children":[]},{"name":".ServeHTTP()","total_count":1,"children":[]},{"name":"New()","total_count":1,"children":[]},{"name":"nonNil()","total_count":1,"children":[]},{"name":"Server","total_count":1,"children":[]},{"name":"spaHandler()","total_count":1,"children":[]},{"name":"withCORS()","total_count":1,"children":[]},{"name":"writeError()","total_count":1,"children":[]},{"name":"writeJSON()","total_count":1,"children":[]}]},{"name":"server_test.go","total_count":4,"children":[{"name":"getJSON()","total_count":1,"children":[]},{"name":"mustWrite()","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"TestEndpoints()","total_count":1,"children":[]}]}]},{"name":"store","total_count":39,"children":[{"name":"queries.go","total_count":22,"children":[{"name":".Callers()","total_count":1,"children":[]},{"name":".Calls()","total_count":1,"children":[]},{"name":".edgesJoined()","total_count":1,"children":[]},{"name":".FullGraph()","total_count":1,"children":[]},{"name":".Health()","total_count":1,"children":[]},{"name":".Members()","total_count":1,"children":[]},{"name":".Search()","total_count":1,"children":[]},{"name":".Stats()","total_count":1,"children":[]},{"name":".Subgraph()","total_count":1,"children":[]},{"name":".Symbol()","total_count":1,"children":[]},{"name":".SymbolsInFile()","total_count":1,"children":[]},{"name":".Tree()","total_count":1,"children":[]},{"name":"baseOf()","total_count":1,"children":[]},{"name":"dirOf()","total_count":1,"children":[]},{"name":"EdgeWithSymbol","total_count":1,"children":[]},{"name":"ensureDir()","total_count":1,"children":[]},{"name":"FileCount","total_count":1,"children":[]},{"name":"Health","total_count":1,"children":[]},{"name":"rank()","total_count":1,"children":[]},{"name":"scanRefs()","total_count":1,"children":[]},{"name":"Stats","total_count":1,"children":[]},{"name":"Store","total_count":1,"children":[]}]},{"name":"store.go","total_count":14,"children":[{"name":".allSymbols()","total_count":1,"children":[]},{"name":".allUnresolvedCalls()","total_count":1,"children":[]},{"name":".Close()","total_count":1,"children":[]},{"name":".FileHash()","total_count":1,"children":[]},{"name":".KnownFiles()","total_count":1,"children":[]},{"name":".RebuildEdges()","total_count":1,"children":[]},{"name":".RemoveFile()","total_count":1,"children":[]},{"name":".UpsertFile()","total_count":1,"children":[]},{"name":"deleteFile()","total_count":1,"children":[]},{"name":"migrate()","total_count":1,"children":[]},{"name":"Open()","total_count":1,"children":[]},{"name":"scanner","total_count":1,"children":[]},{"name":"scanSymbol()","total_count":1,"children":[]},{"name":"Store","total_count":1,"children":[]}]},{"name":"store_test.go","total_count":3,"children":[{"name":"TestIngestAndQuery()","total_count":1,"children":[]},{"name":"TestSymbolWithNoParamsOrReturnsIsNeverNil()","total_count":1,"children":[]},{"name":"TestUpsertFileReplacesPreviousContent()","total_count":1,"children":[]}]}]}]},{"name":"web","total_count":243,"children":[{"name":".oxlintrc.json","total_count":8,"children":[{"name":"$schema","total_count":1,"children":[]},{"name":"oxc","total_count":1,"children":[]},{"name":"plugins","total_count":1,"children":[]},{"name":"react","total_count":1,"children":[]},{"name":"react/only-export-components","total_count":1,"children":[]},{"name":"react/rules-of-hooks","total_count":1,"children":[]},{"name":"rules","total_count":1,"children":[]},{"name":"warn","total_count":1,"children":[]}]},{"name":"package.json","total_count":35,"children":[{"name":"@dagrejs/dagre","total_count":1,"children":[]},{"name":"@dagrejs/dagre","total_count":1,"children":[]},{"name":"@types/node","total_count":1,"children":[]},{"name":"@types/node","total_count":1,"children":[]},{"name":"@types/react","total_count":1,"children":[]},{"name":"@types/react","total_count":1,"children":[]},{"name":"@types/react-dom","total_count":1,"children":[]},{"name":"@types/react-dom","total_count":1,"children":[]},{"name":"@vitejs/plugin-react","total_count":1,"children":[]},{"name":"@vitejs/plugin-react","total_count":1,"children":[]},{"name":"@xyflow/react","total_count":1,"children":[]},{"name":"@xyflow/react","total_count":1,"children":[]},{"name":"build","total_count":1,"children":[]},{"name":"dependencies","total_count":1,"children":[]},{"name":"dev","total_count":1,"children":[]},{"name":"devDependencies","total_count":1,"children":[]},{"name":"lint","total_count":1,"children":[]},{"name":"name","total_count":1,"children":[]},{"name":"oxlint","total_count":1,"children":[]},{"name":"oxlint","total_count":1,"children":[]},{"name":"preview","total_count":1,"children":[]},{"name":"private","total_count":1,"children":[]},{"name":"react","total_count":1,"children":[]},{"name":"react","total_count":1,"children":[]},{"name":"react-dom","total_count":1,"children":[]},{"name":"react-dom","total_count":1,"children":[]},{"name":"react-router-dom","total_count":1,"children":[]},{"name":"react-router-dom","total_count":1,"children":[]},{"name":"scripts","total_count":1,"children":[]},{"name":"type","total_count":1,"children":[]},{"name":"typescript","total_count":1,"children":[]},{"name":"typescript","total_count":1,"children":[]},{"name":"version","total_count":1,"children":[]},{"name":"vite","total_count":1,"children":[]},{"name":"vite","total_count":1,"children":[]}]},{"name":"src","total_count":155,"children":[{"name":"api","total_count":56,"children":[{"name":"client.ts","total_count":35,"children":[{"name":".constructor()","total_count":1,"children":[]},{"name":"addMemory()","total_count":1,"children":[]},{"name":"ApiRequestError","total_count":1,"children":[]},{"name":"byId()","total_count":1,"children":[]},{"name":"callEntries()","total_count":1,"children":[]},{"name":"deleteMemory()","total_count":1,"children":[]},{"name":"edgeKind()","total_count":1,"children":[]},{"name":"getBotRun()","total_count":1,"children":[]},{"name":"getBotRuns()","total_count":1,"children":[]},{"name":"getBots()","total_count":1,"children":[]},{"name":"getFileSymbols()","total_count":1,"children":[]},{"name":"getGraph()","total_count":1,"children":[]},{"name":"getMemory()","total_count":1,"children":[]},{"name":"getSource()","total_count":1,"children":[]},{"name":"getStats()","total_count":1,"children":[]},{"name":"getSubgraph()","total_count":1,"children":[]},{"name":"getSymbol()","total_count":1,"children":[]},{"name":"getSymbolCallers()","total_count":1,"children":[]},{"name":"getSymbolCalls()","total_count":1,"children":[]},{"name":"getSymbolMembers()","total_count":1,"children":[]},{"name":"getTree()","total_count":1,"children":[]},{"name":"KbCoreEdge","total_count":1,"children":[]},{"name":"KbCoreGraph","total_count":1,"children":[]},{"name":"KbCoreNode","total_count":1,"children":[]},{"name":"kind()","total_count":1,"children":[]},{"name":"language()","total_count":1,"children":[]},{"name":"lineNumber()","total_count":1,"children":[]},{"name":"loadGraph()","total_count":1,"children":[]},{"name":"runBot()","total_count":1,"children":[]},{"name":"search()","total_count":1,"children":[]},{"name":"searchMemory()","total_count":1,"children":[]},{"name":"serviceRequest()","total_count":1,"children":[]},{"name":"toEdge()","total_count":1,"children":[]},{"name":"toRef()","total_count":1,"children":[]},{"name":"toSymbol()","total_count":1,"children":[]}]},{"name":"types.ts","total_count":21,"children":[{"name":"ApiError","total_count":1,"children":[]},{"name":"BotArg","total_count":1,"children":[]},{"name":"BotDef","total_count":1,"children":[]},{"name":"BotRun","total_count":1,"children":[]},{"name":"BotRunSummary","total_count":1,"children":[]},{"name":"CallEdgeEntry","total_count":1,"children":[]},{"name":"Edge","total_count":1,"children":[]},{"name":"EdgeKind","total_count":1,"children":[]},{"name":"GraphResponse","total_count":1,"children":[]},{"name":"MemoryEntry","total_count":1,"children":[]},{"name":"MemoryHit","total_count":1,"children":[]},{"name":"MemoryKind","total_count":1,"children":[]},{"name":"Param","total_count":1,"children":[]},{"name":"RunStatus","total_count":1,"children":[]},{"name":"SourceResponse","total_count":1,"children":[]},{"name":"StatsResponse","total_count":1,"children":[]},{"name":"SubgraphResponse","total_count":1,"children":[]},{"name":"Symbol","total_count":1,"children":[]},{"name":"SymbolKind","total_count":1,"children":[]},{"name":"SymbolRef","total_count":1,"children":[]},{"name":"TreeNode","total_count":1,"children":[]}]}]},{"name":"App.tsx","total_count":2,"children":[{"name":"App()","total_count":1,"children":[]},{"name":"onKeyDown()","total_count":1,"children":[]}]},{"name":"components","total_count":24,"children":[{"name":"Badges","total_count":2,"children":[{"name":"Badges.tsx","total_count":2,"children":[{"name":"KindBadge()","total_count":1,"children":[]},{"name":"LanguageBadge()","total_count":1,"children":[]}]}]},{"name":"CodePanel","total_count":1,"children":[{"name":"CodePanel.tsx","total_count":1,"children":[{"name":"CodePanel()","total_count":1,"children":[]}]}]},{"name":"FileTree","total_count":2,"children":[{"name":"FileTree.tsx","total_count":2,"children":[{"name":"FileTree()","total_count":1,"children":[]},{"name":"TreeEntry()","total_count":1,"children":[]}]}]},{"name":"GlobalGraph","total_count":5,"children":[{"name":"GlobalGraph.tsx","total_count":3,"children":[{"name":"dirOf()","total_count":1,"children":[]},{"name":"GlobalGraph()","total_count":1,"children":[]},{"name":"nodeTypes","total_count":1,"children":[]}]},{"name":"GraphLegend.tsx","total_count":2,"children":[{"name":"EDGE_KINDS","total_count":1,"children":[]},{"name":"GraphLegend()","total_count":1,"children":[]}]}]},{"name":"Header","total_count":2,"children":[{"name":"Header.tsx","total_count":2,"children":[{"name":"Header()","total_count":1,"children":[]},{"name":"Stat()","total_count":1,"children":[]}]}]},{"name":"Search","total_count":3,"children":[{"name":"CommandPalette.tsx","total_count":3,"children":[{"name":"CommandPalette()","total_count":1,"children":[]},{"name":"onKeyDown()","total_count":1,"children":[]},{"name":"select()","total_count":1,"children":[]}]}]},{"name":"SymbolGraph","total_count":9,"children":[{"name":"LocalSymbolGraph.tsx","total_count":2,"children":[{"name":"LocalSymbolGraph()","total_count":1,"children":[]},{"name":"nodeTypes","total_count":1,"children":[]}]},{"name":"SymbolNode.tsx","total_count":7,"children":[{"name":"NodeRole","total_count":1,"children":[]},{"name":"openFull()","total_count":1,"children":[]},{"name":"openHandler()","total_count":1,"children":[]},{"name":"SymbolFlowNode","total_count":1,"children":[]},{"name":"SymbolNode()","total_count":1,"children":[]},{"name":"SymbolNodeData","total_count":1,"children":[]},{"name":"toggle()","total_count":1,"children":[]}]}]}]},{"name":"mock","total_count":25,"children":[{"name":"data.ts","total_count":23,"children":[{"name":"ADMIN_ROUTER_CLASS","total_count":1,"children":[]},{"name":"ALL_EDGES","total_count":1,"children":[]},{"name":"ALL_SYMBOLS","total_count":1,"children":[]},{"name":"CONFIG_IFACE","total_count":1,"children":[]},{"name":"CONFIG_PATH","total_count":1,"children":[]},{"name":"DEFAULT_TIMEOUT","total_count":1,"children":[]},{"name":"FETCH_USER","total_count":1,"children":[]},{"name":"HANDLER_IFACE","total_count":1,"children":[]},{"name":"MAIN","total_count":1,"children":[]},{"name":"MEMBERS_BY_PARENT","total_count":1,"children":[]},{"name":"MOCK_STATS","total_count":1,"children":[]},{"name":"MOCK_TREE","total_count":1,"children":[]},{"name":"mockCallers()","total_count":1,"children":[]},{"name":"mockCalls()","total_count":1,"children":[]},{"name":"mockSearch()","total_count":1,"children":[]},{"name":"mockSubgraph()","total_count":1,"children":[]},{"name":"QUERY_DB","total_count":1,"children":[]},{"name":"ROUTER_CLASS","total_count":1,"children":[]},{"name":"ROUTER_HANDLE_REQUEST","total_count":1,"children":[]},{"name":"START_SERVER","total_count":1,"children":[]},{"name":"SYMBOLS_BY_FILE","total_count":1,"children":[]},{"name":"SYMBOLS_BY_ID","total_count":1,"children":[]},{"name":"USER_STRUCT","total_count":1,"children":[]}]},{"name":"source.ts","total_count":2,"children":[{"name":"getMockSourceLines()","total_count":1,"children":[]},{"name":"MOCK_SOURCE","total_count":1,"children":[]}]}]},{"name":"pages","total_count":32,"children":[{"name":"BotsView.tsx","total_count":11,"children":[{"name":"BotCard()","total_count":1,"children":[]},{"name":"BotsView()","total_count":1,"children":[]},{"name":"formatTime()","total_count":1,"children":[]},{"name":"handleRunClick()","total_count":1,"children":[]},{"name":"OutputPanel()","total_count":1,"children":[]},{"name":"selectRun()","total_count":1,"children":[]},{"name":"shortTime()","total_count":1,"children":[]},{"name":"startRun()","total_count":1,"children":[]},{"name":"StatusPill()","total_count":1,"children":[]},{"name":"submitForm()","total_count":1,"children":[]},{"name":"toggleForm()","total_count":1,"children":[]}]},{"name":"GraphPageView.tsx","total_count":3,"children":[{"name":"focusOn()","total_count":1,"children":[]},{"name":"GraphPageView()","total_count":1,"children":[]},{"name":"load()","total_count":1,"children":[]}]},{"name":"HomeView.tsx","total_count":1,"children":[{"name":"HomeView()","total_count":1,"children":[]}]},{"name":"MemoryView.tsx","total_count":9,"children":[{"name":"AddMemoryForm()","total_count":1,"children":[]},{"name":"formatTime()","total_count":1,"children":[]},{"name":"handleDelete()","total_count":1,"children":[]},{"name":"KindFilter","total_count":1,"children":[]},{"name":"KINDS","total_count":1,"children":[]},{"name":"MemoryCard()","total_count":1,"children":[]},{"name":"MemoryView()","total_count":1,"children":[]},{"name":"refresh()","total_count":1,"children":[]},{"name":"submit()","total_count":1,"children":[]}]},{"name":"ModuleView.tsx","total_count":4,"children":[{"name":"GROUP_ORDER","total_count":1,"children":[]},{"name":"GROUP_TITLE","total_count":1,"children":[]},{"name":"inferLanguage()","total_count":1,"children":[]},{"name":"ModuleView()","total_count":1,"children":[]}]},{"name":"SymbolDetailView.tsx","total_count":4,"children":[{"name":"CallList()","total_count":1,"children":[]},{"name":"goTo()","total_count":1,"children":[]},{"name":"MetaBlock()","total_count":1,"children":[]},{"name":"SymbolDetailView()","total_count":1,"children":[]}]}]},{"name":"utils","total_count":13,"children":[{"name":"dagreLayout.ts","total_count":1,"children":[{"name":"layoutWithDagre()","total_count":1,"children":[]}]},{"name":"editorLink.ts","total_count":2,"children":[{"name":"editorLink()","total_count":1,"children":[]},{"name":"kbCoreOpenLink()","total_count":1,"children":[]}]},{"name":"style.ts","total_count":10,"children":[{"name":"EDGE_COLOR_VAR","total_count":1,"children":[]},{"name":"EDGE_LABEL","total_count":1,"children":[]},{"name":"edgeColor()","total_count":1,"children":[]},{"name":"KIND_COLOR_VAR","total_count":1,"children":[]},{"name":"KIND_HEX","total_count":1,"children":[]},{"name":"KIND_LABEL","total_count":1,"children":[]},{"name":"kindColor()","total_count":1,"children":[]},{"name":"kindHexColor()","total_count":1,"children":[]},{"name":"LANGUAGE_ICON","total_count":1,"children":[]},{"name":"languageIcon()","total_count":1,"children":[]}]}]},{"name":"vite-env.d.ts","total_count":2,"children":[{"name":"ImportMeta","total_count":1,"children":[]},{"name":"ImportMetaEnv","total_count":1,"children":[]}]},{"name":"main.tsx","total_count":1,"children":[]}]},{"name":"tsconfig.app.json","total_count":23,"children":[{"name":"allowArbitraryExtensions","total_count":1,"children":[]},{"name":"allowImportingTsExtensions","total_count":1,"children":[]},{"name":"compilerOptions","total_count":1,"children":[]},{"name":"DOM","total_count":1,"children":[]},{"name":"erasableSyntaxOnly","total_count":1,"children":[]},{"name":"ES2023","total_count":1,"children":[]},{"name":"include","total_count":1,"children":[]},{"name":"jsx","total_count":1,"children":[]},{"name":"lib","total_count":1,"children":[]},{"name":"module","total_count":1,"children":[]},{"name":"moduleDetection","total_count":1,"children":[]},{"name":"moduleResolution","total_count":1,"children":[]},{"name":"noEmit","total_count":1,"children":[]},{"name":"noFallthroughCasesInSwitch","total_count":1,"children":[]},{"name":"noUnusedLocals","total_count":1,"children":[]},{"name":"noUnusedParameters","total_count":1,"children":[]},{"name":"skipLibCheck","total_count":1,"children":[]},{"name":"src","total_count":1,"children":[]},{"name":"target","total_count":1,"children":[]},{"name":"tsBuildInfoFile","total_count":1,"children":[]},{"name":"types","total_count":1,"children":[]},{"name":"verbatimModuleSyntax","total_count":1,"children":[]},{"name":"vite/client","total_count":1,"children":[]}]},{"name":"tsconfig.json","total_count":2,"children":[{"name":"files","total_count":1,"children":[]},{"name":"references","total_count":1,"children":[]}]},{"name":"tsconfig.node.json","total_count":19,"children":[{"name":"allowImportingTsExtensions","total_count":1,"children":[]},{"name":"compilerOptions","total_count":1,"children":[]},{"name":"erasableSyntaxOnly","total_count":1,"children":[]},{"name":"ES2023","total_count":1,"children":[]},{"name":"include","total_count":1,"children":[]},{"name":"lib","total_count":1,"children":[]},{"name":"module","total_count":1,"children":[]},{"name":"moduleDetection","total_count":1,"children":[]},{"name":"node","total_count":1,"children":[]},{"name":"noEmit","total_count":1,"children":[]},{"name":"noFallthroughCasesInSwitch","total_count":1,"children":[]},{"name":"noUnusedLocals","total_count":1,"children":[]},{"name":"noUnusedParameters","total_count":1,"children":[]},{"name":"skipLibCheck","total_count":1,"children":[]},{"name":"target","total_count":1,"children":[]},{"name":"tsBuildInfoFile","total_count":1,"children":[]},{"name":"types","total_count":1,"children":[]},{"name":"verbatimModuleSyntax","total_count":1,"children":[]},{"name":"vite.config.ts","total_count":1,"children":[]}]},{"name":"vite.config.ts","total_count":1,"children":[]}]}]};
+
+    function transformData(jsonData) {
+        // Helper function to recursively build the children structure
+        function processNode(node, parentL1StageName) {
+            let displayName = node.name;
+            // Append total_count if it exists and is not already in the name
+            if (node.total_count !== undefined) {
+                if (!/\(Total Count: \d+\)$/.test(displayName)) {
+                    displayName += ` (Total Count: ${node.total_count})`;
+                }
+            }
+
+            const newNode = { name: displayName };
+
+            if (parentL1StageName === "Root") {
+                 newNode.originalStageName = node.name;
+            } else {
+                newNode.originalStageName = parentL1StageName;
+            }
+
+            if (node.children && node.children.length > 0) {
+                const stageNameToPass = (parentL1StageName === "Root") ? node.name : parentL1StageName;
+                newNode.children = node.children.map(child => processNode(child, stageNameToPass));
+            }
+
+            return newNode;
+        }
+
+        let rootDisplayName = jsonData.name;
+        if (jsonData.total_count !== undefined && !/\(Total Count: \d+\)$/.test(rootDisplayName)) {
+            rootDisplayName += ` (Total Count: ${jsonData.total_count})`;
+        }
+
+        return {
+            name: rootDisplayName,
+            originalStageName: "Root",
+            children: (jsonData.children || []).map(child => processNode(child, "Root"))
+        };
+    }
+
+    const treeData = transformData(initialJsonData);
+
+    // Auto-populated phaseColors: every depth-1 child of the root gets
+    // a stable colour from a bigger palette so all top-level dirs are
+    // distinguishable.
+    const PALETTE = [
+      ["#3498DB","#2980B9","#AED6F1"], ["#2ECC71","#27AE60","#A9DFBF"],
+      ["#E74C3C","#C0392B","#F5B7B1"], ["#9B59B6","#8E44AD","#D7BDE2"],
+      ["#F39C12","#D68910","#FAD7A0"], ["#1ABC9C","#117864","#A2D9CE"],
+      ["#34495E","#1B2631","#ABB2B9"], ["#E67E22","#BA4A00","#F5CBA7"],
+      ["#16A085","#0E6655","#A2D9CE"], ["#D35400","#A04000","#EDBB99"],
+      ["#7F8C8D","#566573","#D5DBDB"], ["#C0392B","#7B241C","#F5B7B1"],
+      ["#2E86C1","#1B4F72","#A9CCE3"], ["#28B463","#196F3D","#A9DFBF"],
+      ["#AF7AC5","#6C3483","#D2B4DE"],
+    ];
+    const phaseColors = { "Root": { fill: "#4A4A4A", stroke: "#333333", collapsedFill: "#6C757D" },
+                          "Default": { fill: "#BDC3C7", stroke: "#95A5A6", collapsedFill: "#ECF0F1" } };
+    (initialJsonData.children || []).forEach((c, i) => {
+      const pal = PALETTE[i % PALETTE.length];
+      phaseColors[c.name] = { fill: pal[0], stroke: pal[1], collapsedFill: pal[2] };
+    });
+
+    const levelSpecificPalettes = {
+      0: { fill: "#4A4A4A", stroke: "#333333", collapsedFill: "#6C757D" },
+      2: { fill: "#6ab04c", stroke: "#508a38", collapsedFill: "#a3d391" },
+      3: { fill: "#f0932b", stroke: "#d0730f", collapsedFill: "#f6c07e" },
+      4: { fill: "#be2edd", stroke: "#a01cb3", collapsedFill: "#e08bf2" },
+      5: { fill: "#00a8ff", stroke: "#007ac1", collapsedFill: "#74d2ff" },
+      6: { fill: "#e55039", stroke: "#c23620", collapsedFill: "#f09a8d" },
+      default: { fill: "#747d8c", stroke: "#57606f", collapsedFill: "#a4b0be" }
+    };
+
+    const svgElement = d3.select("#tree-svg");
+    const initialSvgWidth = +svgElement.attr("width");
+    const initialSvgHeight = +svgElement.attr("height");
+    const margin = { top: 40, right: 120, bottom: 80, left: 450 };
+    let width = initialSvgWidth - margin.left - margin.right;
+    let height = initialSvgHeight - margin.top - margin.bottom;
+    const duration = 500;
+    let nodeCounter = 0;
+    const g = svgElement.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    const treemap = d3.tree().nodeSize([40, 0]);
+    let rootNode = d3.hierarchy(treeData, d => d.children);
+    rootNode.x0 = 0;
+    rootNode.y0 = 0;
+
+    if (rootNode.children) {
+      rootNode.children.forEach(d_child => {
+        if (d_child.children) { collapseBranch(d_child); }
+      });
+    }
+    updateTree(rootNode);
+
+    function collapseBranch(d) { if (d.children) { d._children = d.children; d._children.forEach(collapseBranch); d.children = null; } }
+    function expandBranch(d) { if (d._children) { d.children = d._children; d._children = null; } if (d.children) { d.children.forEach(expandBranch); } }
+    window.expandAll = () => { expandBranch(rootNode); updateTree(rootNode); };
+    window.collapseAll = () => { if (rootNode.children) { rootNode.children.forEach(collapseBranch); } updateTree(rootNode); };
+    window.resetView = () => { if (rootNode.children) { rootNode.children.forEach(d_child => { if (d_child.children || d_child._children) { collapseBranch(d_child); } }); } if (rootNode._children && !rootNode.children) { rootNode.children = rootNode._children; rootNode._children = null; } updateTree(rootNode); };
+
+    function updateTree(source) {
+      const treeLayoutData = treemap(rootNode);
+      let nodes = treeLayoutData.descendants();
+      let links = treeLayoutData.descendants().slice(1);
+
+      let minX = 0;
+      let maxX = 0;
+      if (nodes.length > 0) {
+        minX = d3.min(nodes, d => d.x);
+        maxX = d3.max(nodes, d => d.x);
+      }
+
+      let neededHeight = Math.max(initialSvgHeight, maxX - minX + margin.top + margin.bottom + 100);
+      svgElement.transition().duration(duration / 2).attr("height", neededHeight);
+      g.transition().duration(duration / 2).attr("transform", `translate(${margin.left},${margin.top - minX + 40})`);
+
+      nodes.forEach(d => { d.y = d.depth * 400; }); // Adjust horizontal separation if needed
+
+      const node = g.selectAll('g.node').data(nodes, d => d.id || (d.id = ++nodeCounter));
+      const nodeEnter = node.enter().append('g')
+        .attr('class', d => "node" + (d.children || d._children ? " node--internal" : " node--leaf") + (d._children ? " _children" : ""))
+        .attr('transform', d => `translate(${source.y0},${source.x0})`)
+        .on('click', (event, d) => { if (d.children) { d._children = d.children; d.children = null; } else if (d._children) { d.children = d._children; d._children = null; } updateTree(d); })
+        .style('cursor', d => (d.children || d._children) ? 'pointer' : 'default');
+
+      nodeEnter.append('circle').attr('r', 1e-6);
+
+      nodeEnter.append('text')
+        .attr('dy', '.35em')
+        .attr('x', d => d.children || d._children ? -14 : 14)
+        .attr('text-anchor', d => d.children || d._children ? 'end' : 'start')
+        .style("fill-opacity", 1e-6)
+        .call(wrapText, 380);
+
+      const nodeUpdate = nodeEnter.merge(node);
+      nodeUpdate.transition().duration(duration)
+        .attr('transform', d => `translate(${d.y},${d.x})`)
+        .attr('class', d => "node" + (d.children ? " node--internal" : " node--leaf") + (d._children ? " node--internal _children" : ""));
+
+      nodeUpdate.select('circle').attr('r', 8.5)
+        .style('fill', d => {
+            let palette;
+            if (d.depth === 0) {
+                palette = levelSpecificPalettes[0];
+            } else if (d.depth === 1) {
+                palette = phaseColors[d.data.originalStageName] || phaseColors.Default;
+            } else {
+                palette = levelSpecificPalettes[d.depth] || levelSpecificPalettes.default;
+            }
+            if (d._children) return palette.collapsedFill;
+            if (d.children) return palette.fill;
+            return "#fff";
+        })
+        .style('stroke', d => {
+            let palette;
+            if (d.depth === 0) {
+                palette = levelSpecificPalettes[0];
+            } else if (d.depth === 1) {
+                palette = phaseColors[d.data.originalStageName] || phaseColors.Default;
+            } else {
+                palette = levelSpecificPalettes[d.depth] || levelSpecificPalettes.default;
+            }
+            return palette.stroke;
+        });
+      nodeUpdate.select('text').style("fill-opacity", 1).call(wrapText, 380);
+
+      const nodeExit = node.exit().transition().duration(duration).attr('transform', d => `translate(${source.y},${source.x})`).remove();
+      nodeExit.select('circle').attr('r', 1e-6);
+      nodeExit.select('text').style('fill-opacity', 1e-6);
+
+      const link = g.selectAll('path.link').data(links, d => d.id);
+      const linkEnter = link.enter().insert('path', "g").attr('class', 'link').attr('d', d => { const o = { x: source.x0, y: source.y0 }; return diagonal(o, o); });
+
+      linkEnter.merge(link).transition().duration(duration).attr('d', d => diagonal(d, d.parent))
+        .style('stroke', d => {
+            const sourceNode = d.parent;
+            if (!sourceNode) return phaseColors.Default.stroke;
+            const l1AncestorName = sourceNode.data.originalStageName;
+            const colorPalette = phaseColors[l1AncestorName] || phaseColors.Default;
+            return colorPalette.stroke;
+        });
+      link.exit().transition().duration(duration).attr('d', d => { const o = { x: source.x, y: source.y }; return diagonal(o, o); }).remove();
+      nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+    }
+
+    function diagonal(s, d) { return `M ${s.y} ${s.x} C ${(s.y + d.y) / 2} ${s.x}, ${(s.y + d.y) / 2} ${d.x}, ${d.y} ${d.x}`; }
+
+    function wrapText(textElements, maxWidth) {
+        const textPartColors = {
+            name: '#343a40',
+            count: '#0056b3'
+        };
+        const countRegex = /(\s\(Total Count: \d+\))$/;
+
+        textElements.each(function () {
+            const textD3 = d3.select(this);
+            const originalNodeText = textD3.datum().data.name;
+            const x = parseFloat(textD3.attr("x") || 0);
+            const initialDy = textD3.attr("dy");
+            const textAnchor = textD3.attr("text-anchor");
+            const lineHeight = 1.1;
+
+            textD3.text(null);
+
+            let namePart = originalNodeText;
+            let countPartText = "";
+
+            const countMatch = originalNodeText.match(countRegex);
+            if (countMatch && originalNodeText.endsWith(countMatch[0])) {
+                namePart = originalNodeText.substring(0, originalNodeText.length - countMatch[0].length).trim();
+                countPartText = countMatch[0].trim();
+            }
+
+            const tokens = [];
+            namePart.split(/\s+/).filter(Boolean).forEach(word => {
+                tokens.push({ text: word, type: 'name' });
+            });
+            if (countPartText) {
+                tokens.push({ text: countPartText, type: 'count' });
+            }
+
+            if (tokens.length === 0 && originalNodeText) {
+                tokens.push({ text: originalNodeText, type: 'name' });
+            }
+
+            let currentTspan = textD3.append("tspan").attr("x", x).attr("dy", initialDy);
+            if (textAnchor === "end") currentTspan.attr("text-anchor", "end");
+
+            let lineTokens = [];
+
+            for (let i = 0; i < tokens.length; i++) {
+                const tokenObj = tokens[i];
+
+                lineTokens.push(tokenObj);
+                currentTspan.text(lineTokens.map(t => t.text).join(" "));
+
+                if (currentTspan.node().getComputedTextLength() > maxWidth && lineTokens.length > 1) {
+                    lineTokens.pop();
+
+                    currentTspan.text(null);
+                    lineTokens.forEach((prevToken, idx) => {
+                        currentTspan.append("tspan")
+                            .text((idx > 0 ? " " : "") + prevToken.text)
+                            .style("fill", textPartColors[prevToken.type] || textPartColors.name)
+                            .style("font-weight", prevToken.type === 'count' ? "bold" : "normal");
+                    });
+
+                    lineTokens = [tokenObj];
+                    currentTspan = textD3.append("tspan").attr("x", x).attr("dy", lineHeight + "em");
+                    if (textAnchor === "end") currentTspan.attr("text-anchor", "end");
+                }
+            }
+
+            currentTspan.text(null);
+            lineTokens.forEach((token, idx) => {
+                currentTspan.append("tspan")
+                    .text((idx > 0 ? " " : "") + token.text)
+                    .style("fill", textPartColors[token.type] || textPartColors.name)
+                    .style("font-weight", token.type === 'count' ? "bold" : "normal");
+            });
+
+            if (textD3.selectAll("tspan > tspan").empty() && textD3.select("tspan").text().length === 0 && originalNodeText) {
+                let t = textD3.select("tspan");
+                let displayText = originalNodeText;
+                t.text(displayText).style("fill", textPartColors.name);
+                if (t.node() && t.node().getComputedTextLength() > maxWidth && displayText.length > 20) {
+                    let estimatedChars = Math.floor(maxWidth / (t.node().getComputedTextLength()/displayText.length) );
+                    displayText = displayText.substring(0, Math.max(0, estimatedChars - 3)) + "...";
+                    t.text(displayText);
+                }
+            }
+        });
+    }
+  </script>
+</body>
+</html>

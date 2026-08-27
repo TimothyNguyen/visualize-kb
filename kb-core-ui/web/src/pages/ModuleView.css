@@ -1,0 +1,102 @@
+.module-view {
+  max-width: 900px;
+  padding: 24px 28px 60px;
+}
+
+.module-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.module-path {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+  word-break: break-all;
+}
+
+.module-loading,
+.module-empty,
+.module-error {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.module-error {
+  color: var(--danger);
+}
+
+.module-group {
+  margin-bottom: 26px;
+}
+
+.module-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin: 0 0 10px;
+}
+
+.symbol-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.symbol-card {
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  cursor: pointer;
+}
+
+.symbol-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.symbol-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.symbol-card-name {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.symbol-card-loc {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
+.symbol-card-signature {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  background: var(--bg-inset);
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

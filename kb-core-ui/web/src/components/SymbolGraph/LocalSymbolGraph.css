@@ -1,0 +1,16 @@
+.local-symbol-graph {
+  height: 320px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-inset);
+}
+
+.local-graph-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}

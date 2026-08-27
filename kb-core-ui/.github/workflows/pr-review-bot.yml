@@ -1,0 +1,44 @@
+name: PR Review Bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Only one review per PR at a time — a rapid string of pushes shouldn't
+# queue up redundant (and costly) review runs.
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build kb-core-ui
+        run: go build -o kb-core-ui ./cmd/kb-core-ui
+
+      - name: Install claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run PR review bot
+        env:
+          # Personal `claude login` sessions can't work unattended — CI
+          # authenticates via API key instead. Set this as a repo secret:
+          # Settings -> Secrets and variables -> Actions -> New repository secret.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::warning::ANTHROPIC_API_KEY secret is not set — skipping PR review. See bots/README.md."
+            exit 0
+          fi
+          ./kb-core-ui bot pr-review "${{ github.event.pull_request.number }}"

@@ -1,0 +1,133 @@
+:root {
+  --bg: #f6f7f9;
+  --bg-elevated: #ffffff;
+  --bg-inset: #eef0f3;
+  --border: #dde1e6;
+  --border-strong: #c7ccd4;
+  --text: #2b2f38;
+  --text-dim: #6b7280;
+  --text-faint: #99a1ab;
+  --accent: #4f7cff;
+  --accent-bg: rgba(79, 124, 255, 0.12);
+  --accent-strong: #2f5ee0;
+  --danger: #e5484d;
+  --warn: #d9822b;
+
+  --k-function: #4f7cff;
+  --k-method: #38b2ac;
+  --k-class: #d97757;
+  --k-interface: #a37fdb;
+  --k-const: #e0b23e;
+  --k-variable: #8fbf5f;
+  --k-module: #9aa4b2;
+  --k-package: #9aa4b2;
+  --k-route: #c94fc9;
+
+  --e-calls: #4f7cff;
+  --e-references: #8fbf5f;
+  --e-contains: #9aa4b2;
+  --e-implements: #a37fdb;
+  --e-extends: #d97757;
+  --e-handles: #c94fc9;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  color-scheme: light dark;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1015;
+    --bg-elevated: #161922;
+    --bg-inset: #1b1f2a;
+    --border: #262b38;
+    --border-strong: #343b4a;
+    --text: #d7dae1;
+    --text-dim: #8b93a5;
+    --text-faint: #5c6577;
+    --accent: #7c9dff;
+    --accent-bg: rgba(124, 157, 255, 0.14);
+    --accent-strong: #a9c0ff;
+    --danger: #ff6b70;
+    --warn: #e6a84f;
+
+    --k-function: #7c9dff;
+    --k-method: #4fd6cd;
+    --k-class: #f0946b;
+    --k-interface: #c2a4ec;
+    --k-const: #f0cc6b;
+    --k-variable: #a8de78;
+    --k-module: #8b93a5;
+    --k-package: #8b93a5;
+    --k-route: #e07be0;
+
+    --e-calls: #7c9dff;
+    --e-references: #a8de78;
+    --e-contains: #6b7280;
+    --e-implements: #c2a4ec;
+    --e-extends: #f0946b;
+    --e-handles: #e07be0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+code,
+pre {
+  font-family: var(--mono);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+.scroll-y {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
