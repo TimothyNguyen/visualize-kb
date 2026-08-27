@@ -1,12 +1,12 @@
 """Regression tests for install-time instruction strings.
 
 These strings live in kb-core/__main__.py and are written into project-local
-files (CLAUDE.md, AGENTS.md, GEMINI.md, .cursor/rules/, .kiro/steering/, etc.)
-or into in-process hook payloads. Earlier versions of kb-core told every
-assistant to "ALWAYS read kb-core-out/GRAPH_REPORT.md before answering" —
-which silently increased per-question token usage in Claude Code sessions
-(issue #580). This file locks in the query-first policy so a future revert
-or partial change is caught by CI.
+files (CLAUDE.md, AGENTS.md, .github/copilot-instructions.md, etc.) or into
+in-process hook payloads. Earlier versions of kb-core told every assistant to
+"ALWAYS read kb-core-out/GRAPH_REPORT.md before answering" — which silently
+increased per-question token usage in Claude Code sessions (issue #580). This
+file locks in the query-first policy so a future revert or partial change is
+caught by CI.
 """
 from __future__ import annotations
 import json
@@ -17,14 +17,7 @@ from kb_core.__main__ import (
     _skill_registration,
     _CLAUDE_MD_SECTION,
     _AGENTS_MD_SECTION,
-    _GEMINI_MD_SECTION,
-    _GEMINI_NUDGE_TEXT,
     _VSCODE_INSTRUCTIONS_SECTION,
-    _ANTIGRAVITY_RULES,
-    _KIRO_STEERING,
-    _CURSOR_RULE,
-    _OPENCODE_PLUGIN_JS,
-    _DEVIN_RULES,
 )
 
 
@@ -36,14 +29,7 @@ _INSTALL_TEXTS: dict[str, str] = {
     "_READ_NUDGE": _READ_NUDGE,
     "_CLAUDE_MD_SECTION": _CLAUDE_MD_SECTION,
     "_AGENTS_MD_SECTION": _AGENTS_MD_SECTION,
-    "_GEMINI_MD_SECTION": _GEMINI_MD_SECTION,
-    "_GEMINI_NUDGE_TEXT": _GEMINI_NUDGE_TEXT,
     "_VSCODE_INSTRUCTIONS_SECTION": _VSCODE_INSTRUCTIONS_SECTION,
-    "_ANTIGRAVITY_RULES": _ANTIGRAVITY_RULES,
-    "_KIRO_STEERING": _KIRO_STEERING,
-    "_CURSOR_RULE": _CURSOR_RULE,
-    "_OPENCODE_PLUGIN_JS": _OPENCODE_PLUGIN_JS,
-    "_DEVIN_RULES": _DEVIN_RULES,
 }
 
 
@@ -71,9 +57,8 @@ def test_no_install_surface_demands_reading_the_full_report_first():
 
     Uses regex patterns instead of literal strings so a future revert that
     rephrases ("MUST read", "Always consult", "first task is to open ...")
-    is also caught. Note: bare 'ALWAYS' is NOT banned because
-    ``alwaysApply: true`` (Cursor) and ``trigger: always_on`` (Antigravity)
-    are legitimate platform metadata, not the bug.
+    is also caught. Note: bare 'ALWAYS' is NOT banned because it can appear
+    in legitimate platform metadata, not just the bug.
     """
     import re
     banned = [
@@ -105,12 +90,7 @@ def test_report_is_still_referenced_as_fallback():
     md_section_texts = {
         "_CLAUDE_MD_SECTION": _CLAUDE_MD_SECTION,
         "_AGENTS_MD_SECTION": _AGENTS_MD_SECTION,
-        "_GEMINI_MD_SECTION": _GEMINI_MD_SECTION,
         "_VSCODE_INSTRUCTIONS_SECTION": _VSCODE_INSTRUCTIONS_SECTION,
-        "_ANTIGRAVITY_RULES": _ANTIGRAVITY_RULES,
-        "_KIRO_STEERING": _KIRO_STEERING,
-        "_CURSOR_RULE": _CURSOR_RULE,
-        "_DEVIN_RULES": _DEVIN_RULES,
     }
     missing: list[str] = []
     for name, text in md_section_texts.items():

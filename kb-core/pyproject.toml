@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kb-core"
 version = "0.9.50"
-description = "AI coding assistant skill (Claude Code, CodeBuddy, Codex, OpenCode, Kilo Code, Cursor, Gemini CLI, Aider, OpenClaw, Factory Droid, Trae, Hermes, Kiro, Pi, Devin CLI, Google Antigravity) - turn any folder of code, docs, papers, images, or videos into a queryable knowledge graph"
+description = "AI coding assistant skill (Claude Code, Codex, GitHub Copilot) - turn any folder of code, docs, papers, images, or videos into a queryable knowledge graph"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "LICENSE-MIT", "NOTICE"]
-keywords = ["claude", "claude-code", "codex", "opencode", "kilo", "cursor", "gemini", "aider", "kiro", "pi", "devin", "knowledge-graph", "rag", "graphrag", "obsidian", "community-detection", "tree-sitter", "leiden", "llm"]
+keywords = ["claude", "claude-code", "codex", "copilot", "knowledge-graph", "rag", "graphrag", "obsidian", "community-detection", "tree-sitter", "leiden", "llm"]
 requires-python = ">=3.10"
 dependencies = [
     "networkx>=3.4",
@@ -136,7 +136,7 @@ include-package-data = false
 # under kb_core/skills/<host>/references/, and the always-on injection blocks
 # under kb_core/always_on/. There is no kb_core/skills/<host>/SKILL.md in the
 # repo, so no SKILL.md glob is needed here.
-kb_core = ["skill.md", "skill-codex.md", "skill-opencode.md", "skill-kilo.md", "command-kilo.md", "skill-aider.md", "skill-amp.md", "skill-agents.md", "skill-copilot.md", "skill-claw.md", "skill-windows.md", "skill-droid.md", "skill-trae.md", "skill-kiro.md", "skill-vscode.md", "skill-pi.md", "skill-devin.md", "skills/*/references/*.md", "always_on/*.md"]
+kb_core = ["skill.md", "skill-codex.md", "skill-copilot.md", "skill-windows.md", "skill-vscode.md", "skills/*/references/*.md", "always_on/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -31,7 +31,7 @@ PKG_DIR = Path(kb_core.__file__).parent
 
 # Every platform in the config plus the scope each is exercised at. The
 # destination is resolved from _platform_skill_destination so the assertions
-# track the real install map (including amp's corrected .agents path).
+# track the real install map.
 ALL_CONFIG_PLATFORMS = sorted(mainmod._PLATFORM_CONFIG)
 
 
@@ -94,34 +94,6 @@ def test_skill_roundtrip_at_real_destination(platform, project, tmp_path, monkey
         assert not refs.exists()
 
 
-def test_amp_user_install_at_corrected_agents_path(tmp_path, monkeypatch):
-    """amp's user-scope skill lands under ~/.config/agents/skills (the fix), not ~/.amp."""
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.chdir(tmp_path)
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        dst = mainmod._copy_skill_file("amp", project=False)
-        assert dst == home / ".config" / "agents" / "skills" / "kb-core" / "SKILL.md"
-        assert dst.exists()
-        # The legacy ~/.amp/skills location is not written.
-        assert not (home / ".amp" / "skills").exists()
-        mainmod._remove_skill_file("amp", project=False)
-        assert not dst.exists()
-
-
-def test_amp_project_install_at_agents_path(tmp_path, monkeypatch):
-    """amp's project-scope skill lands under .agents/skills, an Amp search root."""
-    project_dir = tmp_path / "proj"
-    project_dir.mkdir()
-    monkeypatch.chdir(project_dir)
-    with patch("kb_core.__main__.Path.home", return_value=tmp_path / "home"):
-        dst = mainmod._copy_skill_file("amp", project=True, project_dir=project_dir)
-        assert dst == project_dir / ".agents" / "skills" / "kb-core" / "SKILL.md"
-        assert dst.exists()
-        mainmod._remove_skill_file("amp", project=True, project_dir=project_dir)
-        assert not dst.exists()
-
-
 def test_vscode_install_uninstall_roundtrip(tmp_path, monkeypatch):
     """VS Code Copilot Chat round trip at ~/.copilot/skills/kb-core + instructions file."""
     home = tmp_path / "home"
@@ -169,27 +141,21 @@ def _copy_in_tmp(tmp_path, platform):
         os.chdir(old_cwd)
 
 
-def test_install_entrypoint_roundtrip_for_progressive_and_monolith(tmp_path):
-    """The public install() entry point round-trips a progressive and a monolith host.
+def test_install_entrypoint_roundtrip_for_progressive_host(tmp_path):
+    """The public install() entry point round-trips a progressive host.
 
-    claude ships a real references bundle (progressive); aider is a monolith.
-    Both install through install() and uninstall through _remove_skill_file,
-    landing at and clearing their real destinations.
+    claude ships a real references bundle. It installs through install() and
+    uninstalls through _remove_skill_file, landing at and clearing its real
+    destination.
     """
-    for platform, rel in (
-        ("claude", Path(".claude") / "skills" / "kb-core"),
-        ("aider", Path(".aider") / "kb-core"),
-    ):
-        _install_via_entrypoint(tmp_path, platform)
-        skill_dir = tmp_path / rel
-        assert (skill_dir / "SKILL.md").exists()
-        if _has_real_bundle(platform):
-            assert (skill_dir / "references").is_dir()
-        else:
-            assert not (skill_dir / "references").exists()
-        with patch("kb_core.__main__.Path.home", return_value=tmp_path):
-            mainmod._remove_skill_file(platform)
-        assert not (skill_dir / "SKILL.md").exists()
+    platform, rel = "claude", Path(".claude") / "skills" / "kb-core"
+    _install_via_entrypoint(tmp_path, platform)
+    skill_dir = tmp_path / rel
+    assert (skill_dir / "SKILL.md").exists()
+    assert (skill_dir / "references").is_dir()
+    with patch("kb_core.__main__.Path.home", return_value=tmp_path):
+        mainmod._remove_skill_file(platform)
+    assert not (skill_dir / "SKILL.md").exists()
 
 
 # --- monolith -> progressive upgrade path --------------------------------------

@@ -81,8 +81,8 @@ def _code_blocks(markdown: str) -> list[str]:
 
 
 def _skill_bodies() -> list[Path]:
-    paths = sorted(REPO_ROOT.glob("kb-core/skill*.md"))
-    assert paths, "no generated kb-core/skill*.md found"
+    paths = sorted(REPO_ROOT.glob("kb_core/skill*.md"))
+    assert paths, "no generated kb_core/skill*.md found"
     return paths
 
 

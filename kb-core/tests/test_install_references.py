@@ -1,9 +1,9 @@
 """Tests for the progressive-disclosure references/ sidecar install path.
 
 The real claude bundle now ships in the package (kb-core/skills/claude/), so
-claude and its reuse twins (antigravity, kimi) install progressively: a lean
-SKILL.md plus a references/ sidecar. Every other host whose bundle has not
-shipped yet still installs today's byte-identical monolith.
+claude installs progressively: a lean SKILL.md plus a references/ sidecar.
+Every kept host (claude, codex, windows, copilot, vscode) ships its own
+bundle the same way.
 
 The plumbing tests below stage a hand-made fake bundle in claude's slot so the
 dir-copy, version-stamp, reinstall, and uninstall flow can be exercised with
@@ -295,38 +295,6 @@ def test_claude_install_ships_lean_core_and_references(tmp_path):
     ]
 
 
-def test_gemini_install_references_all_resolve(tmp_path):
-    """End-to-end: every references/ pointer in gemini's installed SKILL.md resolves.
-
-    gemini ships claude's lean skill.md body but resolves its references through a
-    separate path, so this locks the body<->refs coupling: a real install with the
-    real claude bundle must leave no dead pointer on disk.
-    """
-    import re
-    _install(tmp_path, "gemini")
-    skill = tmp_path / ".gemini" / "skills" / "kb-core" / "SKILL.md"
-    assert skill.exists()
-    refdir = skill.parent / "references"
-    assert refdir.is_dir()
-    pointers = set(re.findall(r"references/([a-z-]+\.md)", skill.read_text(encoding="utf-8")))
-    assert pointers, "the lean core should link to references/"
-    missing = [p for p in pointers if not (refdir / p).is_file()]
-    assert not missing, f"dead reference pointers in gemini install: {missing}"
-
-
-def test_claude_twins_ride_the_claude_bundle(tmp_path):
-    """antigravity and kimi reuse claude's split bundle, so they go progressive too.
-
-    gemini has no _PLATFORM_CONFIG entry but installs claude's skill.md body
-    verbatim; that body is the lean progressive core, so gemini must ride the
-    claude references bundle as well or it ships a SKILL.md with dead pointers.
-    """
-    for platform in ("antigravity", "kimi", "gemini"):
-        refs_src = mainmod._packaged_skill_refs_dir(platform)
-        assert refs_src is not None
-        assert refs_src == PKG_DIR / "skills" / "claude" / "references"
-
-
 def test_pyproject_declares_references_globs():
     """package-data must declare the references + always-on globs that ship the bundles.
 
@@ -345,43 +313,31 @@ def test_pyproject_declares_references_globs():
     if not pyproject.exists():
         pytest.skip("pyproject.toml not adjacent to package (installed wheel)")
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    pkg_data = data["tool"]["setuptools"]["package-data"]["kb-core"]
+    pkg_data = data["tool"]["setuptools"]["package-data"]["kb_core"]
     assert "skills/*/references/*.md" in pkg_data
     assert "always_on/*.md" in pkg_data
     # The dead glob that matched no file must not creep back in.
     assert "skills/*/SKILL.md" not in pkg_data
 
 
-# The full progressive-disclosure payload the wheel must ship: 15 skill bodies,
-# 104 references (13 split hosts x 8 each), and 6 always-on injection blocks.
+# The full progressive-disclosure payload the wheel must ship: 5 skill bodies,
+# 40 references (5 split hosts x 8 each), and 3 always-on injection blocks.
 _EXPECTED_SKILL_BODIES = (
     "skill.md",
     "skill-codex.md",
-    "skill-opencode.md",
-    "skill-kilo.md",
-    "skill-aider.md",
-    "skill-amp.md",
     "skill-copilot.md",
-    "skill-claw.md",
     "skill-windows.md",
-    "skill-droid.md",
-    "skill-trae.md",
-    "skill-kiro.md",
     "skill-vscode.md",
-    "skill-pi.md",
-    "skill-devin.md",
 )
 _SPLIT_HOSTS = (
-    "claude", "codex", "windows", "opencode", "kilo", "copilot",
-    "claw", "droid", "amp", "trae", "kiro", "pi", "vscode",
+    "claude", "codex", "windows", "copilot", "vscode",
 )
 _REFERENCE_NAMES = (
     "add-watch.md", "exports.md", "extraction-spec.md", "github-and-merge.md",
     "hooks.md", "query.md", "transcribe.md", "update.md",
 )
 _ALWAYS_ON_NAMES = (
-    "agents-md.md", "antigravity-rules.md", "claude-md.md",
-    "gemini-md.md", "kiro-steering.md", "vscode-instructions.md",
+    "agents-md.md", "claude-md.md", "vscode-instructions.md",
 )
 
 
@@ -428,8 +384,8 @@ def test_built_wheel_ships_the_full_skill_payload():
     This is the headline regression guard. If the package-data globs fail to match
     (e.g. the stale skills/*/SKILL.md glob that matched nothing), the wheel ships a
     SKILL.md with no references/ sidecar and an install silently loses every
-    on-demand fragment. The test asserts the whole shipped layout: 15 skill
-    bodies, 96 references, and 6 always-on injection blocks. It FAILS (not skips)
+    on-demand fragment. The test asserts the whole shipped layout: 5 skill
+    bodies, 40 references, and 3 always-on injection blocks. It FAILS (not skips)
     when the build backend is missing, because build is a declared dev dependency.
     """
     repo_root = PKG_DIR.parent
@@ -445,7 +401,7 @@ def test_built_wheel_ships_the_full_skill_payload():
 
     missing_bodies = [b for b in _EXPECTED_SKILL_BODIES if f"kb-core/{b}" not in names]
     assert not missing_bodies, f"wheel is missing skill bodies: {missing_bodies}"
-    assert len(_EXPECTED_SKILL_BODIES) == 15
+    assert len(_EXPECTED_SKILL_BODIES) == 5
 
     missing_refs = [
         f"kb-core/skills/{host}/references/{ref}"
@@ -454,7 +410,7 @@ def test_built_wheel_ships_the_full_skill_payload():
         if f"kb-core/skills/{host}/references/{ref}" not in names
     ]
     assert not missing_refs, f"wheel is missing references: {missing_refs}"
-    assert len(_SPLIT_HOSTS) * len(_REFERENCE_NAMES) == 104
+    assert len(_SPLIT_HOSTS) * len(_REFERENCE_NAMES) == 40
 
     missing_always_on = [
         f"kb-core/always_on/{name}"
@@ -462,58 +418,11 @@ def test_built_wheel_ships_the_full_skill_payload():
         if f"kb-core/always_on/{name}" not in names
     ]
     assert not missing_always_on, f"wheel is missing always-on blocks: {missing_always_on}"
-    assert len(_ALWAYS_ON_NAMES) == 6
+    assert len(_ALWAYS_ON_NAMES) == 3
 
     # The specific headline file that the stale glob would have dropped.
     assert "kb-core/skills/claude/references/extraction-spec.md" in names
-    assert "kb-core/skills/trae/references/hooks.md" in names
-    # amp is now a split host too; its bundle must ship like every other.
-    assert "kb-core/skills/amp/references/hooks.md" in names
-
-
-def test_monolith_install_clears_orphan_references(tmp_path, fake_bundle):
-    """A monolith platform install removes any orphan references/ left behind."""
-    # aider is a monolith (no skill_refs). Seed an orphan references/ dir at its
-    # destination, then install and confirm it is cleared.
-    skill_dst = tmp_path / ".aider" / "kb-core" / "SKILL.md"
-    orphan = skill_dst.parent / "references"
-    orphan.mkdir(parents=True)
-    (orphan / "leftover.md").write_text("leftover\n", encoding="utf-8")
-    _install(tmp_path, "aider")
-    assert skill_dst.exists()
-    assert not orphan.exists()
-
-
-def test_amp_user_install_carries_references(tmp_path, monkeypatch):
-    """amp is progressive: its corrected user dir also gets the references/ sidecar.
-
-    amp's real bundle now ships in the package (kb-core/skills/amp/), so the
-    install copies the actual committed references alongside SKILL.md. This is the
-    case the progressive split was built to cover: amp was the omitted 13th host.
-    """
-    from kb_core.__main__ import main
-
-    assert (PKG_DIR / "skills" / "amp" / "references" / "hooks.md").exists(), (
-        "amp's references bundle must ship in this build"
-    )
-
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        monkeypatch.setattr(sys, "argv", ["kb-core", "amp", "install"])
-        main()
-        skill_dir = home / ".config" / "agents" / "skills" / "kb-core"
-        assert (skill_dir / "SKILL.md").exists()
-        # A representative reference from the shipped amp bundle lands too.
-        assert (skill_dir / "references" / "exports.md").exists()
-        assert (skill_dir / "references" / "hooks.md").exists()
-
-        monkeypatch.setattr(sys, "argv", ["kb-core", "amp", "uninstall"])
-        main()
-
-    assert not skill_dir.exists()
+    assert "kb-core/skills/vscode/references/hooks.md" in names
 
 
 def test_install_from_read_only_package_dir(tmp_path, fake_bundle):

@@ -35,8 +35,6 @@ Rules:
 
 _OLD_AGENTS_SECTION = _OLD_CLAUDE_SECTION  # identical pre-fix shape
 
-_OLD_GEMINI_SECTION = _OLD_CLAUDE_SECTION
-
 _OLD_VSCODE_SECTION = """\
 ## kb-core
 
@@ -44,31 +42,6 @@ For any question about this repo's architecture, structure, components, or how t
 code, your **first tool call must be** to read `kb-core-out/GRAPH_REPORT.md` (if it exists).
 
 Triggers: "how do I…", "where is…", "what does … do", "add/modify a <component>".
-"""
-
-
-_OLD_CURSOR_RULE = """\
----
-description: kb-core knowledge graph context
-alwaysApply: true
----
-
-This project has a kb-core knowledge graph at kb-core-out/.
-
-- Before answering architecture or codebase questions, read kb-core-out/GRAPH_REPORT.md for god nodes and community structure
-- If kb-core-out/wiki/index.md exists, navigate it instead of reading raw files
-"""
-
-
-_OLD_KIRO_STEERING = """\
----
-inclusion: always
----
-
-kb-core: A knowledge graph of this project lives in `kb-core-out/`. \
-If `kb-core-out/GRAPH_REPORT.md` exists, read it before answering architecture questions, \
-tracing dependencies, or searching files — it contains god nodes, community structure, \
-and surprising connections the graph found.
 """
 
 
@@ -156,32 +129,18 @@ def test_claude_install_upgrades_stale_hook_payload(tmp_path, monkeypatch):
 
 
 def test_agents_install_upgrades_stale_section(tmp_path, monkeypatch):
-    """Same upgrade behavior for AGENTS.md (Codex / OpenCode / Aider / Trae)."""
+    """Same upgrade behavior for AGENTS.md (Codex)."""
     monkeypatch.chdir(tmp_path)
     agents_md = tmp_path / "AGENTS.md"
     agents_md.write_text("# Project agents\n\n" + _OLD_AGENTS_SECTION, encoding="utf-8")
     monkeypatch.setattr(mainmod, "_check_skill_version", lambda _: None)
 
-    mainmod._agents_install(tmp_path, platform="codex")
+    mainmod._codex_agents_md_install(tmp_path)
 
     after = agents_md.read_text(encoding="utf-8")
     _assert_no_report_first(after, "AGENTS.md")
     _assert_query_first(after, "AGENTS.md")
     assert "# Project agents" in after
-
-
-def test_gemini_install_upgrades_stale_section(tmp_path, monkeypatch):
-    """Same upgrade behavior for GEMINI.md."""
-    monkeypatch.chdir(tmp_path)
-    gemini_md = tmp_path / "GEMINI.md"
-    gemini_md.write_text(_OLD_GEMINI_SECTION, encoding="utf-8")
-    monkeypatch.setattr(mainmod, "_check_skill_version", lambda _: None)
-
-    mainmod.gemini_install(tmp_path)
-
-    after = gemini_md.read_text(encoding="utf-8")
-    _assert_no_report_first(after, "GEMINI.md")
-    _assert_query_first(after, "GEMINI.md")
 
 
 def test_vscode_install_upgrades_stale_section(tmp_path, monkeypatch):
@@ -197,81 +156,3 @@ def test_vscode_install_upgrades_stale_section(tmp_path, monkeypatch):
     after = instructions.read_text(encoding="utf-8")
     _assert_no_report_first(after, "copilot-instructions.md")
     _assert_query_first(after, "copilot-instructions.md")
-
-
-def test_cursor_install_upgrades_stale_rule(tmp_path, monkeypatch):
-    """Same upgrade behavior for .cursor/rules/kb_core.mdc.
-    The Cursor rule file is wholly kb-core-owned; overwrite on upgrade."""
-    monkeypatch.chdir(tmp_path)
-    rule_path = tmp_path / ".cursor" / "rules" / "kb_core.mdc"
-    rule_path.parent.mkdir(parents=True, exist_ok=True)
-    rule_path.write_text(_OLD_CURSOR_RULE, encoding="utf-8")
-    monkeypatch.setattr(mainmod, "_check_skill_version", lambda _: None)
-
-    mainmod._cursor_install(tmp_path)
-
-    after = rule_path.read_text(encoding="utf-8")
-    assert "read kb-core-out/GRAPH_REPORT.md for god nodes and community structure" not in after
-    _assert_query_first(after, ".cursor/rules/kb_core.mdc")
-    # YAML frontmatter must be preserved
-    assert "alwaysApply: true" in after
-
-
-def test_kiro_install_upgrades_stale_steering(tmp_path, monkeypatch):
-    """Same upgrade behavior for .kiro/steering/kb_core.md (wholly owned)."""
-    monkeypatch.chdir(tmp_path)
-    steering = tmp_path / ".kiro" / "steering" / "kb_core.md"
-    steering.parent.mkdir(parents=True, exist_ok=True)
-    steering.write_text(_OLD_KIRO_STEERING, encoding="utf-8")
-    monkeypatch.setattr(mainmod, "_check_skill_version", lambda _: None)
-
-    # Kiro install copies a skill file too; provide a minimal stand-in
-    skill_src = Path(mainmod.__file__).parent / "skill-kiro.md"
-    if not skill_src.exists():
-        pytest.skip("skill-kiro.md not present in this checkout")
-
-    mainmod._kiro_install(tmp_path)
-
-    after = steering.read_text(encoding="utf-8")
-    assert "read it before answering architecture questions" not in after
-    _assert_query_first(after, ".kiro/steering/kb_core.md")
-    assert "inclusion: always" in after  # frontmatter preserved
-
-
-def test_kiro_install_ships_references_sidecar_and_version_stamp(tmp_path, monkeypatch):
-    """_kiro_install routes through _copy_skill_file so the references/ sidecar
-    and .kb_core_version stamp are written alongside SKILL.md (#1142).
-    Previously it used a bare write_text that bypassed the shared helper."""
-    monkeypatch.setattr(mainmod, "_check_skill_version", lambda _: None)
-
-    refs_dir = Path(mainmod.__file__).parent / "skills" / "kiro" / "references"
-    if not refs_dir.exists():
-        pytest.skip("kiro references bundle not present in this checkout")
-
-    mainmod._kiro_install(tmp_path)
-
-    skill_dir = tmp_path / ".kiro" / "skills" / "kb-core"
-
-    # SKILL.md present
-    assert (skill_dir / "SKILL.md").exists()
-
-    # references/ sidecar installed with at least one fragment
-    refs_dst = skill_dir / "references"
-    assert refs_dst.is_dir(), "references/ sidecar must be installed (#1142)"
-    assert any(refs_dst.iterdir()), "references/ must not be empty"
-
-    # .kb_core_version stamp written
-    version_file = skill_dir / ".kb_core_version"
-    assert version_file.exists(), ".kb_core_version stamp must be written (#1142)"
-    assert version_file.read_text(encoding="utf-8") == mainmod.__version__
-
-    # no references.tmp leftover
-    assert not (skill_dir / "references.tmp").exists()
-
-    # steering file still written
-    assert (tmp_path / ".kiro" / "steering" / "kb_core.md").exists()
-
-    # uninstall removes skill dir, version stamp, references/, and steering file
-    mainmod._kiro_uninstall(tmp_path)
-    assert not skill_dir.exists(), "uninstall must remove skill dir including references/ (#1142)"
-    assert not (tmp_path / ".kiro" / "steering" / "kb_core.md").exists()

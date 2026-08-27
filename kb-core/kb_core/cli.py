@@ -73,12 +73,6 @@ _HOOK_SOURCE_EXTS = (
     '.rs', '.java', '.rb', '.c', '.h', '.cpp', '.hpp', '.cc', '.cs', '.kt',
     '.swift', '.php', '.scala', '.lua', '.sh', '.md', '.rst', '.txt', '.mdx',
 )
-_GEMINI_NUDGE_TEXT = (
-    'kb-core: knowledge graph at kb-core-out/. For focused questions, run '
-    '`kb-core query "<question>"` (scoped subgraph, usually much smaller than '
-    'GRAPH_REPORT.md) instead of grepping raw files. Read GRAPH_REPORT.md only '
-    'for broad architecture context.'
-)
 
 
 def _default_graph_path() -> str:
@@ -697,18 +691,6 @@ def _run_hook_guard(kind: str, strict: bool = False) -> None:
     nudge instead of blocking or demanding.
     """
     from kb_core.paths import out_path, KB_CORE_OUT_NAME
-    # Gemini's BeforeTool hook takes no stdin and must ALWAYS return a decision so
-    # the tool is never blocked; the graph nudge is appended only when a graph
-    # exists. Handled before the stdin read below (which the search/read guards need).
-    if kind == "gemini":
-        payload = {"decision": "allow"}
-        try:
-            if out_path("graph.json").is_file():
-                payload["additionalContext"] = _GEMINI_NUDGE_TEXT
-        except Exception:
-            pass
-        sys.stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
-        return
     try:
         d = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
     except Exception:
@@ -2314,7 +2296,7 @@ def dispatch_command(cmd: str) -> None:
         # tool calls. Graph guidance reaches the agent via AGENTS.md / skill instead.
         sys.exit(0)
     elif cmd == "hook-guard":
-        # Shell-agnostic Claude/Codebuddy PreToolUse guard (#522). Replaces the old
+        # Shell-agnostic Claude PreToolUse guard (#522). Replaces the old
         # inline-bash hooks that failed on Windows. Prints an additionalContext nudge
         # toward kb_core when a fresh in-project graph exists; always exits 0. In
         # strict mode (opt-in, `hook-guard read --strict`) it blocks the first raw

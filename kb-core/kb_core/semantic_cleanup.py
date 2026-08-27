@@ -1,7 +1,7 @@
 # Semantic fragment sanitizer — converts sentence-like rationale nodes into
 # attributes on related nodes and removes invalid file_type values.
 #
-# Called from the skill merge path (see skill-devin.md) and from the in-process
+# Called from the skill merge path (see skill.md) and from the in-process
 # `kb_core merge-chunks` command — both ingest untrusted agent-written chunk
 # JSON, and validate_semantic_fragment() rejects malformed/oversized payloads and
 # crafted node/edge IDs before they touch the graph. The primary build/load paths
@@ -23,7 +23,7 @@ _RATIONALE_MIN_WORDS = 8
 
 # Validation limits for untrusted semantic-fragment payloads. See
 # validate_semantic_fragment(). Issue #825: returned-JSON normalization for
-# OpenCode and Codex agents requires a Python enforcement boundary so a
+# agent-produced chunks requires a Python enforcement boundary so a
 # malicious or runaway agent response cannot exhaust memory or escape the
 # kb_core-out chunk directory via crafted node/edge IDs.
 MAX_SEMANTIC_FRAGMENT_BYTES = 25 * 1024 * 1024

@@ -64,7 +64,7 @@ kb-core-out/
 └── graph.json       the full graph — query it anytime without re-reading your files
 ```
 
-**Works in** Claude Code, Cursor, Codex, Gemini CLI, GitHub Copilot, and 15+ more — [pick your platform](#install).
+**Works in** Claude Code, Codex, GitHub Copilot, and VS Code — [pick your platform](#install).
 
 ---
 
@@ -206,37 +206,17 @@ for example `kb-core claude install --project` or `kb-core codex install --proje
 > **Strict mode (Claude Code):** `kb-core install --project --strict` makes the assistant actually use the graph. The default install *nudges* it to run `kb-core query` before reading files; strict mode *blocks* the first raw source read of a session and redirects it to the graph, then reverts to the nudge (so it fires at most once per session and never gets stuck). Toggle at runtime with `KB_CORE_HOOK_STRICT=1`/`0`; the default install is unchanged (soft nudge).
 
 <details>
-<summary><b>Pick your platform</b> (20+ assistants, click to expand)</summary>
+<summary><b>Pick your platform</b> (click to expand)</summary>
 
 | Platform | Install command |
 |----------|----------------|
 | Claude Code (Linux/Mac) | `kb-core install` |
 | Claude Code (Windows) | `kb-core install` (auto-detected) or `kb-core install --platform windows` |
-| CodeBuddy | `kb-core install --platform codebuddy` |
 | Codex | `kb-core install --platform codex` |
-| OpenCode | `kb-core install --platform opencode` |
-| Kilo Code | `kb-core install --platform kilo` |
 | GitHub Copilot CLI | `kb-core install --platform copilot` |
 | VS Code Copilot Chat | `kb-core vscode install` |
-| Aider | `kb-core install --platform aider` |
-| OpenClaw | `kb-core install --platform claw` |
-| Factory Droid | `kb-core install --platform droid` |
-| Trae | `kb-core install --platform trae` |
-| Trae CN | `kb-core install --platform trae-cn` |
-| Gemini CLI | `kb-core install --platform gemini` |
-| Hermes | `kb-core install --platform hermes` |
-| Kimi Code | `kb-core install --platform kimi` |
-| Amp | `kb-core amp install` |
-| Agent Skills (cross-framework) | `kb-core install --platform agents` (alias `--platform skills`) |
-| Kiro IDE/CLI | `kb-core kiro install` |
-| Pi coding agent | `kb-core install --platform pi` |
-| Cursor | `kb-core cursor install` |
-| Devin CLI | `kb-core devin install` |
-| Google Antigravity | `kb-core antigravity install` |
 
-Codex supports multi-agent workflows without a KB Core-specific configuration flag. CodeBuddy uses the same Agent tool and PreToolUse hook mechanism as Claude Code. Factory Droid uses the `Task` tool for parallel subagent dispatch. OpenClaw and Aider use sequential extraction (parallel agent support is still early on those platforms). Trae uses the Agent tool for parallel subagent dispatch and does **not** support `PreToolUse` hooks, so AGENTS.md is the always-on mechanism.
-
-`--platform agents` (alias `--platform skills`) targets the generic cross-framework [Agent-Skills](https://github.com/anthropics/skills) locations: the spec's user-global `~/.agents/skills/` (read by `npx skills` and spec-compliant frameworks) for a global install, and `./.agents/skills/` for a project (`--project`) install. The bare `kb-core install` stays single-platform (Claude Code) by design — use the named `agents` platform when you want the skill discoverable by any framework that reads `.agents/skills`.
+Codex supports multi-agent workflows without a KB Core-specific configuration flag.
 
 > Codex uses `$kb-core` instead of `/kb-core`. Terminal commands keep the `kb-core` form.
 
@@ -301,42 +281,18 @@ Run this once in your project after building a graph:
 | Platform | Command |
 |----------|---------|
 | Claude Code | `kb-core claude install` |
-| CodeBuddy | `kb-core codebuddy install` |
 | Codex | `kb-core codex install` |
-| OpenCode | `kb-core opencode install` |
-| Kilo Code | `kb-core kilo install` |
 | GitHub Copilot CLI | `kb-core copilot install` |
 | VS Code Copilot Chat | `kb-core vscode install` |
-| Aider | `kb-core aider install` |
-| OpenClaw | `kb-core claw install` |
-| Factory Droid | `kb-core droid install` |
-| Trae | `kb-core trae install` |
-| Trae CN | `kb-core trae-cn install` |
-| Cursor | `kb-core cursor install` |
-| Gemini CLI | `kb-core gemini install` |
-| Hermes | `kb-core hermes install` |
-| Kimi Code | `kb-core install --platform kimi` |
-| Amp | `kb-core amp install` |
-| Agent Skills (cross-framework) | `kb-core agents install` (alias `kb-core skills install`) |
-| Kiro IDE/CLI | `kb-core kiro install` |
-| Pi coding agent | `kb-core pi install` |
-| Devin CLI | `kb-core devin install` |
-| Google Antigravity | `kb-core antigravity install` |
 
 This writes a small config file that tells your assistant to consult the knowledge graph for codebase questions, preferring scoped queries like `kb-core query "<question>"` over reading the full report or grepping raw files.
 
-- **Hook platforms** (Claude Code, Gemini CLI): a hook fires automatically before search-style tool calls (and, on Claude Code, before reading source files one by one via the Read/Glob tools) and nudges your assistant toward the graph path.
-- **Instruction-file platforms** (Codex, OpenCode, Cursor, etc.): persistent instruction files (`AGENTS.md`, `.cursor/rules/`, etc.) provide the same query-first guidance.
+- **Hook platforms** (Claude Code): a hook fires automatically before search-style tool calls, and before reading source files one by one via the Read/Glob tools, and nudges your assistant toward the graph path.
+- **Instruction-file platforms** (Codex): persistent instruction files (`AGENTS.md`) provide the same query-first guidance.
 
 `GRAPH_REPORT.md` is still available for broad architecture review.
 
-**CodeBuddy** does the same two things as Claude Code: writes a `CODEBUDDY.md` section telling CodeBuddy to read `kb-core-out/GRAPH_REPORT.md` before answering architecture questions, and installs `PreToolUse` hooks (`.codebuddy/settings.json`) that fire before Bash search commands and file reads, nudging toward `kb-core query` instead.
-
 **Codex** writes to `AGENTS.md`, which is what actually carries the always-on graph guidance on this platform. `kb-core codex install` also registers a `PreToolUse` hook in `.codex/hooks.json` (`kb-core hook-check`), but that entry is deliberately a **no-op**: Codex Desktop rejects `hookSpecificOutput.additionalContext` on `PreToolUse`, so emitting a nudge there would break Bash tool calls. Unlike Claude Code, where the hook (`kb-core hook-guard`) does the nudging, on Codex the hook fires and intentionally does nothing, and `AGENTS.md` is the always-on mechanism.
-
-**Kilo Code** installs the KB Core skill to `~/.config/kilo/skills/kb_core/SKILL.md` and a native `/kb-core` command to `~/.config/kilo/command/kb_core.md`. `kb-core kilo install` also writes `AGENTS.md` plus a native `tool.execute.before` plugin (`.kilo/plugins/kb_core.js` + `.kilo/kilo.json` or `.kilo/kilo.jsonc` registration) so Kilo gets the same always-on graph reminder behavior through native `.kilo` config.
-
-**Cursor** writes `.cursor/rules/kb_core.mdc` with `alwaysApply: true`, so Cursor includes it in every conversation automatically, no hook needed.
 
 To remove kb-core from all platforms at once: `kb-core uninstall` (add `--purge` to also delete `kb-core-out/`). Or use the per-platform command (e.g. `kb-core claude uninstall`).
 
@@ -473,9 +429,6 @@ kb-core query "what connects DigestAuth to Response?" --graph kb-core-out/graph.
 # expose the graph as an MCP server (for repeated tool-call access)
 python -m kb_core.serve kb-core-out/graph.json
 python -m kb_core.serve --graph kb-core-out/graph.json  # --graph flag also accepted
-
-# register with Kimi Code:
-kimi mcp add --transport stdio kb-core -- python -m kb_core.serve kb-core-out/graph.json
 
 # or serve over HTTP so a whole team points at one URL (no local kb-core needed):
 python -m kb_core.serve kb-core-out/graph.json --transport http --port 8080
@@ -706,42 +659,12 @@ kb-core hook status
 # always-on assistant instructions - platform-specific
 kb-core claude install            # CLAUDE.md + PreToolUse hook (Claude Code)
 kb-core claude uninstall
-kb-core codebuddy install         # CODEBUDDY.md + PreToolUse hook (CodeBuddy)
-kb-core codebuddy uninstall
 kb-core codex install             # AGENTS.md + PreToolUse hook in .codex/hooks.json (Codex)
-kb-core opencode install          # AGENTS.md + tool.execute.before plugin (OpenCode)
-kb-core kilo install              # native Kilo skill + /kb-core command + AGENTS.md + .kilo plugin
-kb-core kilo uninstall
-kb-core cursor install            # .cursor/rules/kb_core.mdc (Cursor)
-kb-core cursor uninstall
-kb-core gemini install            # GEMINI.md + BeforeTool hook (Gemini CLI)
-kb-core gemini uninstall
+kb-core codex uninstall
 kb-core copilot install           # skill file (GitHub Copilot CLI)
 kb-core copilot uninstall
-kb-core aider install             # AGENTS.md (Aider)
-kb-core aider uninstall
-kb-core claw install              # AGENTS.md (OpenClaw)
-kb-core claw uninstall
-kb-core droid install             # AGENTS.md (Factory Droid)
-kb-core droid uninstall
-kb-core trae install              # AGENTS.md (Trae)
-kb-core trae uninstall
-kb-core trae-cn install           # AGENTS.md (Trae CN)
-kb-core trae-cn uninstall
-kb-core hermes install             # AGENTS.md + ~/.hermes/skills/ (Hermes)
-kb-core hermes uninstall
-kb-core amp install               # skill file (Amp)
-kb-core amp uninstall
-kb-core agents install            # ~/.agents/skills/ + AGENTS.md (cross-framework; alias: kb-core skills)
-kb-core agents uninstall
-kb-core kiro install               # .kiro/skills/ + .kiro/steering/kb_core.md (Kiro IDE/CLI)
-kb-core kiro uninstall
-kb-core pi install                # skill file (Pi coding agent)
-kb-core pi uninstall
-kb-core devin install             # skill file + .windsurf/rules/kb_core.md (Devin CLI)
-kb-core devin uninstall
-kb-core antigravity install       # .agents/rules + .agents/workflows (Google Antigravity)
-kb-core antigravity uninstall
+kb-core vscode install            # skill file + .github/copilot-instructions.md (VS Code Copilot Chat)
+kb-core vscode uninstall
 
 kb-core extract ./docs                        # headless LLM extraction for CI (no IDE needed)
 kb-core extract ./docs --backend gemini       # explicit backend: gemini, kimi, claude, openai, deepseek, ollama, bedrock, or claude-cli
@@ -810,7 +733,7 @@ kb-core label ./my-project                                    # (re)name communi
 kb-core label ./my-project --backend=openai --model gpt-4o   # force a specific backend and model
 ```
 
-> **Community names:** inside an agent (Claude Code, Gemini CLI) the agent names communities itself. When you run the bare CLI, `cluster-only` auto-names them with the configured backend (built-in or custom OpenAI-compatible provider) — pass `--no-label` to keep `Community N`, or run `kb-core label` to (re)generate names on demand.
+> **Community names:** inside an agent (e.g. Claude Code) the agent names communities itself. When you run the bare CLI, `cluster-only` auto-names them with the configured backend (built-in or custom OpenAI-compatible provider) — pass `--no-label` to keep `Community N`, or run `kb-core label` to (re)generate names on demand.
 
 ---
 

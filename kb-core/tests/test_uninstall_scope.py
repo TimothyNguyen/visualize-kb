@@ -8,7 +8,7 @@ These tests pin the fixed contract:
 - fn(pd)               -> project-scoped, global untouched (trap closed)
 - fn(pd, project=True) -> project only
 - fn(pd, remove_user_skill=True) -> global removed, project tree untouched
-- `kb-core uninstall --project` for codebuddy no longer nukes the global skill
+- `kb-core uninstall --project` no longer nukes the global skill
 """
 from __future__ import annotations
 
@@ -19,14 +19,10 @@ import pytest
 from kb_core.install import (
     _project_uninstall,
     claude_uninstall,
-    codebuddy_uninstall,
-    gemini_uninstall,
 )
 
 PLATFORMS = [
     pytest.param(claude_uninstall, "claude", ".claude", id="claude"),
-    pytest.param(gemini_uninstall, "gemini", ".gemini", id="gemini"),
-    pytest.param(codebuddy_uninstall, "codebuddy", ".codebuddy", id="codebuddy"),
 ]
 
 
@@ -99,15 +95,15 @@ def test_project_true_removes_only_project_tree(uninstall_fn, platform, dot_dir,
     assert not project_tree.exists()
 
 
-def test_project_uninstall_codebuddy_spares_global(tmp_path):
-    """`kb-core uninstall --project` (codebuddy branch) must not delete ~/.codebuddy (#2215)."""
-    global_tree = _plant_skill_tree(Path.home(), ".codebuddy")
+def test_project_uninstall_claude_spares_global(tmp_path):
+    """`kb-core uninstall --project` (claude branch) must not delete ~/.claude (#2215)."""
+    global_tree = _plant_skill_tree(Path.home(), ".claude")
     proj_dir = tmp_path / "proj"
-    project_tree = _plant_skill_tree(proj_dir, ".codebuddy")
+    project_tree = _plant_skill_tree(proj_dir, ".claude")
 
-    _project_uninstall("codebuddy", proj_dir)
+    _project_uninstall("claude", proj_dir)
 
-    assert (global_tree / "SKILL.md").exists(), "CLI --project uninstall deleted the global codebuddy skill"
+    assert (global_tree / "SKILL.md").exists(), "CLI --project uninstall deleted the global claude skill"
     assert (global_tree / ".kb_core_version").exists()
     assert not (project_tree / "SKILL.md").exists()
     assert not project_tree.exists()

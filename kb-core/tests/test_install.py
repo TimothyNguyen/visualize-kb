@@ -6,23 +6,6 @@ from unittest.mock import patch
 import pytest
 
 
-PLATFORMS = {
-    "claude": (".claude/skills/kb-core/SKILL.md",),
-    "codebuddy": (".codebuddy/skills/kb-core/SKILL.md",),
-    "codex": (".codex/skills/kb-core/SKILL.md",),
-    "opencode": (".config/opencode/skills/kb-core/SKILL.md",),
-    "kilo": (
-        ".config/kilo/skills/kb-core/SKILL.md",
-        ".config/kilo/command/kb_core.md",
-    ),
-    "claw": (".openclaw/skills/kb-core/SKILL.md",),
-    "droid": (".factory/skills/kb-core/SKILL.md",),
-    "trae": (".trae/skills/kb-core/SKILL.md",),
-    "trae-cn": (".trae-cn/skills/kb-core/SKILL.md",),
-    "windows": (".claude/skills/kb-core/SKILL.md",),
-}
-
-
 def _install(tmp_path, platform):
     from kb_core.__main__ import install
 
@@ -86,31 +69,22 @@ def test_install_claude_md_defaults_to_home_when_config_dir_unset(tmp_path, monk
     assert "~/.claude/skills/kb-core/SKILL.md" in md.read_text()
 
 
-def test_install_codebuddy(tmp_path):
-    _install(tmp_path, "codebuddy")
-    assert (tmp_path / ".codebuddy" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
 def test_install_codex(tmp_path):
     _install(tmp_path, "codex")
     assert (tmp_path / ".codex" / "skills" / "kb-core" / "SKILL.md").exists()
 
 
-def test_install_opencode(tmp_path):
-    _install(tmp_path, "opencode")
-    assert (
-        tmp_path / ".config" / "opencode" / "skills" / "kb-core" / "SKILL.md"
-    ).exists()
-
-
-def test_install_positional_platform_opencode(tmp_path, monkeypatch):
+def test_install_help_does_not_install_default(tmp_path, monkeypatch, capsys):
     from kb_core.__main__ import main
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["kb-core", "install", "opencode"])
+    monkeypatch.setattr(sys, "argv", ["kb-core", "install", "codex", "--help"])
     with patch("kb_core.__main__.Path.home", return_value=tmp_path):
         main()
-    assert (tmp_path / ".config" / "opencode" / "skills" / "kb-core" / "SKILL.md").exists()
-    assert not (tmp_path / ".claude" / "skills" / "kb-core" / "SKILL.md").exists()
+    out = capsys.readouterr().out
+    assert "Usage: kb-core install" in out
+    assert "codex" in out
+    assert not (tmp_path / ".claude").exists()
+    assert not (tmp_path / ".codex").exists()
 
 
 def test_install_project_claude_writes_project_scope(tmp_path, monkeypatch, capsys):
@@ -199,52 +173,6 @@ def test_codex_subcommand_project_install_and_uninstall_are_project_scoped(tmp_p
     assert "kb-core" not in hooks_path.read_text()
 
 
-def test_antigravity_install_project_writes_project_skill(tmp_path, monkeypatch):
-    from kb_core.__main__ import main
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    monkeypatch.setattr(sys, "argv", ["kb-core", "antigravity", "install", "--project"])
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        main()
-    assert (project / ".agents" / "skills" / "kb-core" / "SKILL.md").exists()
-    assert not (home / ".agents" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
-def test_install_help_does_not_install_default(tmp_path, monkeypatch, capsys):
-    from kb_core.__main__ import main
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["kb-core", "install", "opencode", "--help"])
-    with patch("kb_core.__main__.Path.home", return_value=tmp_path):
-        main()
-    out = capsys.readouterr().out
-    assert "Usage: kb-core install" in out
-    assert "opencode" in out
-    assert not (tmp_path / ".claude").exists()
-    assert not (tmp_path / ".config").exists()
-
-
-def test_install_claw(tmp_path):
-    _install(tmp_path, "claw")
-    assert (tmp_path / ".openclaw" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
-def test_install_droid(tmp_path):
-    _install(tmp_path, "droid")
-    assert (tmp_path / ".factory" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
-def test_install_trae(tmp_path):
-    _install(tmp_path, "trae")
-    assert (tmp_path / ".trae" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
-def test_install_trae_cn(tmp_path):
-    _install(tmp_path, "trae-cn")
-    assert (tmp_path / ".trae-cn" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
 def test_install_windows(tmp_path):
     _install(tmp_path, "windows")
     assert (tmp_path / ".claude" / "skills" / "kb-core" / "SKILL.md").exists()
@@ -281,73 +209,12 @@ def test_codex_skill_uses_kb_core_with_existing_graph():
 
 
 def test_codex_agents_install_mentions_dirty_graph_output(tmp_path):
-    _agents_install(tmp_path, "codex")
+    from kb_core.__main__ import _codex_agents_md_install
+
+    _codex_agents_md_install(tmp_path)
     content = (tmp_path / "AGENTS.md").read_text()
     assert "Dirty kb-core-out/ files are expected" in content
     assert "not a reason to skip kb-core" in content
-
-
-def test_opencode_skill_contains_mention():
-    """OpenCode skill file must reference @mention."""
-    import kb_core
-
-    skill = (Path(kb_core.__file__).parent / "skill-opencode.md").read_text()
-    assert "@mention" in skill
-
-
-def test_opencode_skill_uses_opencode_agent_guidance():
-    """OpenCode's dispatch slot uses @mention, not the Claude Agent-tool example.
-
-    The progressive split consolidates the bespoke v8 opencode prose into the
-    shared core. opencode's distinguishing delta is the @mention dispatch block;
-    its B2 slot must carry that and must NOT carry the Claude Agent-tool example.
-    (The shared Step B3 re-run hint names the general-purpose agent type as the
-    canonical example for every host; that lives in the shared core, not in
-    opencode's dispatch slot.)
-    """
-    import kb_core
-
-    skill = (Path(kb_core.__file__).parent / "skill-opencode.md").read_text()
-    assert "@mention" in skill
-    assert "@agent" in skill
-    # Scope the agent-type check to opencode's dispatch slot (B2 -> B3).
-    b2 = skill[skill.index("**Step B2"):skill.index("**Step B3")]
-    assert "general-purpose" not in b2
-    assert "Concrete example for 3 chunks" not in b2
-    assert "OpenCode platform" in b2
-
-
-def test_kilo_skill_mentions_task_tool():
-    """Kilo skill file should use the native Task tool flow."""
-    import kb_core
-
-    skill = (Path(kb_core.__file__).parent / "skill-kilo.md").read_text()
-    assert "Task" in skill
-
-
-def test_kilo_skill_avoids_double_quoted_python_c_fstring_dict_keys():
-    """Kilo runs snippets through double-quoted python -c strings."""
-    import re
-    import kb_core
-
-    skill = (Path(kb_core.__file__).parent / "skill-kilo.md").read_text()
-    assert not re.search(r"print\(f'.*\[[\"'][^\"']+[\"']\]", skill)
-
-
-def test_claw_skill_uses_agent_tool_dispatch():
-    """OpenClaw rides the shared Agent-tool disk-collect dispatch.
-
-    The consolidated design moves claw off the v8 sequential OpenClaw flow onto
-    the same agent-tool-disk dispatch as claude (per-platform-deltas), so its B2
-    slot uses the Agent tool and must not carry the Codex or OpenCode mechanics.
-    """
-    import kb_core
-
-    skill = (Path(kb_core.__file__).parent / "skill-claw.md").read_text()
-    b2 = skill[skill.index("**Step B2"):skill.index("**Step B3")]
-    assert 'subagent_type="general-purpose"' in b2
-    assert "spawn_agent" not in skill
-    assert "@mention" not in skill
 
 
 def test_all_skill_files_exist_in_package():
@@ -358,22 +225,11 @@ def test_all_skill_files_exist_in_package():
     for name in (
         "skill.md",
         "skill-codex.md",
-        "skill-opencode.md",
-        "skill-kilo.md",
-        "skill-claw.md",
+        "skill-copilot.md",
         "skill-windows.md",
-        "skill-droid.md",
-        "skill-trae.md",
-        "skill-kiro.md",
+        "skill-vscode.md",
     ):
         assert (pkg / name).exists(), f"Missing: {name}"
-
-
-def test_kilo_command_file_exists_in_package():
-    import kb_core
-
-    pkg = Path(kb_core.__file__).parent
-    assert (pkg / "command-kilo.md").exists()
 
 
 def test_claude_install_registers_claude_md(tmp_path):
@@ -385,25 +241,6 @@ def test_claude_install_registers_claude_md(tmp_path):
 def test_codex_install_does_not_write_claude_md(tmp_path):
     _install(tmp_path, "codex")
     assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
-
-
-# --- CodeBuddy CODEBUDDY.md + hook install/uninstall tests ---
-
-def test_codebuddy_install_writes_codebuddy_md(tmp_path):
-    from kb_core.__main__ import codebuddy_install
-    codebuddy_install(tmp_path)
-    md = tmp_path / "CODEBUDDY.md"
-    assert md.exists()
-    assert "kb-core-out/GRAPH_REPORT.md" in md.read_text()
-
-
-def test_codebuddy_install_writes_hook(tmp_path):
-    import json as _json
-    from kb_core.__main__ import codebuddy_install
-    codebuddy_install(tmp_path)
-    settings = _json.loads((tmp_path / ".codebuddy" / "settings.json").read_text())
-    hooks = settings["hooks"]["PreToolUse"]
-    assert any("kb-core" in str(h) for h in hooks)
 
 
 def test_claude_hook_is_shell_agnostic(tmp_path):
@@ -439,48 +276,6 @@ def test_claude_hook_install_idempotent_and_replaces_old_bash_hook(tmp_path):
     assert len(kb_core_hooks) == 2, "exactly the Bash + Read|Glob guards, no dupes"
     # the legacy bash payload must be gone
     assert not any("[ -f kb-core-out" in h["hooks"][0]["command"] for h in kb_core_hooks)
-
-
-def test_codebuddy_install_idempotent(tmp_path):
-    from kb_core.__main__ import codebuddy_install
-    codebuddy_install(tmp_path)
-    codebuddy_install(tmp_path)
-    md = tmp_path / "CODEBUDDY.md"
-    assert md.read_text().count("## kb-core") == 1
-
-
-def test_codebuddy_install_merges_existing_codebuddy_md(tmp_path):
-    from kb_core.__main__ import codebuddy_install
-    (tmp_path / "CODEBUDDY.md").write_text("# My project rules\n")
-    codebuddy_install(tmp_path)
-    content = (tmp_path / "CODEBUDDY.md").read_text()
-    assert "# My project rules" in content
-    assert "kb-core-out/GRAPH_REPORT.md" in content
-
-
-def test_codebuddy_uninstall_removes_section(tmp_path):
-    from kb_core.__main__ import codebuddy_install, codebuddy_uninstall
-    codebuddy_install(tmp_path)
-    codebuddy_uninstall(tmp_path)
-    md = tmp_path / "CODEBUDDY.md"
-    assert not md.exists()
-
-
-def test_codebuddy_uninstall_removes_hook(tmp_path):
-    import json as _json
-    from kb_core.__main__ import codebuddy_install, codebuddy_uninstall
-    codebuddy_install(tmp_path)
-    codebuddy_uninstall(tmp_path)
-    settings_path = tmp_path / ".codebuddy" / "settings.json"
-    if settings_path.exists():
-        settings = _json.loads(settings_path.read_text())
-        hooks = settings.get("hooks", {}).get("PreToolUse", [])
-        assert not any("kb-core" in str(h) for h in hooks)
-
-
-def test_codebuddy_uninstall_noop_if_not_installed(tmp_path):
-    from kb_core.__main__ import codebuddy_uninstall
-    codebuddy_uninstall(tmp_path)  # should not raise
 
 
 def test_uninstall_project_removes_project_skill_only(tmp_path, monkeypatch):
@@ -521,153 +316,7 @@ def test_uninstall_project_without_platform_removes_project_installs(tmp_path, m
     assert not (project / ".claude" / "CLAUDE.md").exists()
 
 
-def test_antigravity_uninstall_project_removes_project_skill_only(tmp_path, monkeypatch):
-    from kb_core.__main__ import main
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    # Global skill lives at ~/.gemini/config/skills/ (per #1079 fix)
-    global_skill = home / ".gemini" / "config" / "skills" / "kb-core" / "SKILL.md"
-    global_skill.parent.mkdir(parents=True)
-    global_skill.write_text("global skill")
-    monkeypatch.chdir(project)
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        monkeypatch.setattr(sys, "argv", ["kb-core", "antigravity", "install", "--project"])
-        main()
-        monkeypatch.setattr(sys, "argv", ["kb-core", "antigravity", "uninstall", "--project"])
-        main()
-    assert global_skill.exists(), "project uninstall must not touch global skill"
-    assert not (project / ".agents" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
-def test_antigravity_global_install_writes_gemini_config_skills(tmp_path, monkeypatch):
-    """Global `kb-core antigravity install` must write to ~/.gemini/config/skills/ (#1079)."""
-    from kb_core.__main__ import main
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        monkeypatch.setattr(sys, "argv", ["kb-core", "antigravity", "install"])
-        main()
-    global_skill = home / ".gemini" / "config" / "skills" / "kb-core" / "SKILL.md"
-    wrong_skill = home / ".agents" / "skills" / "kb-core" / "SKILL.md"
-    assert global_skill.exists(), f"skill missing from correct global path {global_skill}"
-    assert not wrong_skill.exists(), f"skill incorrectly written to {wrong_skill}"
-    # rules + workflow go workspace-local, not in home
-    assert (project / ".agents" / "rules" / "kb_core.md").exists()
-    assert (project / ".agents" / "workflows" / "kb_core.md").exists()
-
-
-def test_antigravity_global_uninstall_removes_gemini_config_skill(tmp_path, monkeypatch):
-    """Global `kb-core antigravity uninstall` must remove from ~/.gemini/config/skills/ (#1079)."""
-    from kb_core.__main__ import main
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        monkeypatch.setattr(sys, "argv", ["kb-core", "antigravity", "install"])
-        main()
-        global_skill = home / ".gemini" / "config" / "skills" / "kb-core" / "SKILL.md"
-        assert global_skill.exists(), "precondition: skill must exist before uninstall"
-        monkeypatch.setattr(sys, "argv", ["kb-core", "antigravity", "uninstall"])
-        main()
-    assert not global_skill.exists(), f"skill not removed from {global_skill} after uninstall"
-    # workspace files also cleaned up
-    assert not (project / ".agents" / "rules" / "kb_core.md").exists()
-    assert not (project / ".agents" / "workflows" / "kb_core.md").exists()
-
-
-# --- always-on AGENTS.md install/uninstall tests ---
-
-
-def _agents_install(tmp_path, platform):
-    from kb_core.__main__ import _agents_install as _install_fn
-
-    _install_fn(tmp_path, platform)
-
-
-def _agents_uninstall(tmp_path, platform=""):
-    from kb_core.__main__ import _agents_uninstall as _uninstall_fn
-
-    _uninstall_fn(tmp_path, platform=platform)
-
-
-def _kilo_install(project_dir, home_dir):
-    from kb_core.__main__ import _kilo_install as _install_fn
-
-    with patch("kb_core.__main__.Path.home", return_value=home_dir):
-        _install_fn(project_dir)
-
-
-def _kilo_uninstall(project_dir, home_dir):
-    from kb_core.__main__ import _kilo_uninstall as _uninstall_fn
-
-    with patch("kb_core.__main__.Path.home", return_value=home_dir):
-        _uninstall_fn(project_dir)
-
-
-def test_codex_agents_install_writes_agents_md(tmp_path):
-    _agents_install(tmp_path, "codex")
-    agents_md = tmp_path / "AGENTS.md"
-    assert agents_md.exists()
-    assert "kb-core" in agents_md.read_text()
-    assert "GRAPH_REPORT.md" in agents_md.read_text()
-
-
-def test_opencode_agents_install_writes_agents_md(tmp_path):
-    _agents_install(tmp_path, "opencode")
-    assert (tmp_path / "AGENTS.md").exists()
-
-
-def test_claw_agents_install_writes_agents_md(tmp_path):
-    _agents_install(tmp_path, "claw")
-    assert (tmp_path / "AGENTS.md").exists()
-
-
-def test_agents_install_idempotent(tmp_path):
-    """Installing twice does not duplicate the section."""
-    _agents_install(tmp_path, "codex")
-    _agents_install(tmp_path, "codex")
-    content = (tmp_path / "AGENTS.md").read_text()
-    assert content.count("## kb-core") == 1
-
-
-def test_agents_install_appends_to_existing(tmp_path):
-    """Installs into an existing AGENTS.md without overwriting other content."""
-    agents_md = tmp_path / "AGENTS.md"
-    agents_md.write_text("# Existing rules\n\nDo not break things.\n")
-    _agents_install(tmp_path, "codex")
-    content = agents_md.read_text()
-    assert "Do not break things." in content
-    assert "## kb-core" in content
-
-
-def test_agents_uninstall_removes_section(tmp_path):
-    _agents_install(tmp_path, "codex")
-    _agents_uninstall(tmp_path)
-    agents_md = tmp_path / "AGENTS.md"
-    # File deleted when it only contained kb_core section
-    assert not agents_md.exists()
-
-
-def test_agents_uninstall_preserves_other_content(tmp_path):
-    """Uninstall keeps pre-existing content."""
-    agents_md = tmp_path / "AGENTS.md"
-    agents_md.write_text("# Existing rules\n\nDo not break things.\n")
-    _agents_install(tmp_path, "codex")
-    _agents_uninstall(tmp_path)
-    assert agents_md.exists()
-    content = agents_md.read_text()
-    assert "Do not break things." in content
-    assert "## kb-core" not in content
-
-
-def test_agents_uninstall_no_op_when_not_installed(tmp_path, capsys):
-    _agents_uninstall(tmp_path)
-    out = capsys.readouterr().out
-    assert "nothing to do" in out
+# --- always-on AGENTS.md install/uninstall tests (Codex) ---
 
 
 def test_remove_marker_section_matches_exact_heading_only(tmp_path):
@@ -696,9 +345,75 @@ def test_remove_marker_section_matches_exact_heading_only(tmp_path):
     assert "inner" not in out2 and "intro" not in out2
 
 
+def test_codex_agents_install_writes_agents_md(tmp_path):
+    from kb_core.__main__ import _codex_agents_md_install
+
+    _codex_agents_md_install(tmp_path)
+    agents_md = tmp_path / "AGENTS.md"
+    assert agents_md.exists()
+    assert "kb-core" in agents_md.read_text()
+    assert "GRAPH_REPORT.md" in agents_md.read_text()
+
+
+def test_agents_install_idempotent(tmp_path):
+    """Installing twice does not duplicate the section."""
+    from kb_core.__main__ import _codex_agents_md_install
+
+    _codex_agents_md_install(tmp_path)
+    _codex_agents_md_install(tmp_path)
+    content = (tmp_path / "AGENTS.md").read_text()
+    assert content.count("## kb-core") == 1
+
+
+def test_agents_install_appends_to_existing(tmp_path):
+    """Installs into an existing AGENTS.md without overwriting other content."""
+    from kb_core.__main__ import _codex_agents_md_install
+
+    agents_md = tmp_path / "AGENTS.md"
+    agents_md.write_text("# Existing rules\n\nDo not break things.\n")
+    _codex_agents_md_install(tmp_path)
+    content = agents_md.read_text()
+    assert "Do not break things." in content
+    assert "## kb-core" in content
+
+
+def test_agents_uninstall_removes_section(tmp_path):
+    from kb_core.__main__ import _codex_agents_md_install, _codex_agents_md_uninstall
+
+    _codex_agents_md_install(tmp_path)
+    _codex_agents_md_uninstall(tmp_path)
+    agents_md = tmp_path / "AGENTS.md"
+    # File deleted when it only contained kb_core section
+    assert not agents_md.exists()
+
+
+def test_agents_uninstall_preserves_other_content(tmp_path):
+    """Uninstall keeps pre-existing content."""
+    from kb_core.__main__ import _codex_agents_md_install, _codex_agents_md_uninstall
+
+    agents_md = tmp_path / "AGENTS.md"
+    agents_md.write_text("# Existing rules\n\nDo not break things.\n")
+    _codex_agents_md_install(tmp_path)
+    _codex_agents_md_uninstall(tmp_path)
+    assert agents_md.exists()
+    content = agents_md.read_text()
+    assert "Do not break things." in content
+    assert "## kb-core" not in content
+
+
+def test_agents_uninstall_no_op_when_not_installed(tmp_path, capsys):
+    from kb_core.__main__ import _codex_agents_md_uninstall
+
+    _codex_agents_md_uninstall(tmp_path)
+    out = capsys.readouterr().out
+    assert "nothing to do" in out
+
+
 def test_agents_uninstall_preserves_user_h3_kb_core_heading(tmp_path):
     """#2062 end-to-end: uninstall strips kb-core's own H2 section but leaves a
     user-authored `### kb-core` H3 (and everything else) byte-intact."""
+    from kb_core.__main__ import _codex_agents_md_install, _codex_agents_md_uninstall
+
     agents_md = tmp_path / "AGENTS.md"
     agents_md.write_text(
         "# My rules\n\n"
@@ -706,10 +421,10 @@ def test_agents_uninstall_preserves_user_h3_kb_core_heading(tmp_path):
         "My own notes on how I use kb_core. Keep this.\n\n"
         "## Other\n\nUnrelated content.\n"
     )
-    _agents_install(tmp_path, "codex")  # appends a genuine `## kb_core` H2 section
+    _codex_agents_md_install(tmp_path)  # appends a genuine `## kb_core` H2 section
     assert "## kb-core" in agents_md.read_text()
 
-    _agents_uninstall(tmp_path)
+    _codex_agents_md_uninstall(tmp_path)
     content = agents_md.read_text()
     assert "### kb-core" in content, "user's H3 heading was deleted (#2062)"
     assert "My own notes on how I use kb_core. Keep this." in content
@@ -720,449 +435,15 @@ def test_agents_uninstall_preserves_user_h3_kb_core_heading(tmp_path):
 def test_uninstall_untouched_when_only_user_h3_present(tmp_path, capsys):
     """#2062: a file with only a user `### kb-core` H3 (kb-core never installed)
     must be left byte-identical, not stripped."""
+    from kb_core.__main__ import _codex_agents_md_uninstall
+
     agents_md = tmp_path / "AGENTS.md"
     original = "# My rules\n\n### kb-core\n\nHand-written. Do not touch.\n"
     agents_md.write_text(original)
     before = agents_md.read_bytes()
-    _agents_uninstall(tmp_path)
+    _codex_agents_md_uninstall(tmp_path)
     assert agents_md.read_bytes() == before
     assert "nothing to do" in capsys.readouterr().out
-
-
-# --- OpenCode plugin tests ---
-
-
-def test_opencode_agents_install_writes_plugin(tmp_path):
-    """opencode install writes .opencode/plugins/kb_core.js."""
-    _agents_install(tmp_path, "opencode")
-    plugin = tmp_path / ".opencode" / "plugins" / "kb_core.js"
-    assert plugin.exists()
-    assert "tool.execute.before" in plugin.read_text()
-
-
-def test_opencode_plugin_reminder_has_no_backticks(tmp_path):
-    """The bash reminder string must not contain backticks or $(...) (regression test for #1413).
-
-    The plugin prepends `echo "<reminder>" && <cmd>` to the user's bash command.
-    Backticks or $() inside the reminder trigger bash command substitution
-    when the echo runs, which both corrupts tool output and silently executes
-    the very kb-core command we are only suggesting.
-    """
-    _agents_install(tmp_path, "opencode")
-    plugin = tmp_path / ".opencode" / "plugins" / "kb_core.js"
-    body = plugin.read_text()
-    # Extract the echoed reminder string literal between the double-quotes
-    # of the `output.args.command = 'echo "..." && ' +` line.
-    import re
-
-    m = re.search(r'echo "([^"]*)"', body)
-    assert m, "echo reminder not found in plugin body"
-    reminder = m.group(1)
-    assert "`" not in reminder, f"backtick in reminder would trigger command substitution: {reminder!r}"
-    assert "$(" not in reminder, f"$() in reminder would trigger command substitution: {reminder!r}"
-
-
-def test_opencode_plugin_uses_semicolon_not_ampersand(tmp_path):
-    """The reminder must be joined to the user's command with ';', not '&&'
-    (#1646). Windows PowerShell 5.1 rejects '&&' as a statement separator, which
-    broke the first bash command of every OpenCode session on Windows. ';' works
-    in PowerShell 5.1, Bash, and POSIX shells."""
-    _agents_install(tmp_path, "opencode")
-    body = (tmp_path / ".opencode" / "plugins" / "kb_core.js").read_text()
-    # The prepend line ends with the separator before `' +`.
-    assert '" ; \' +' in body or '." ; \' +' in body, "reminder should join with ';'"
-    assert '" && \' +' not in body, "'&&' breaks PowerShell 5.1 (#1646)"
-
-
-def test_opencode_agents_install_registers_plugin_in_config(tmp_path):
-    """opencode install registers the plugin in .opencode/opencode.json."""
-    _agents_install(tmp_path, "opencode")
-    config_file = tmp_path / ".opencode" / "opencode.json"
-    assert config_file.exists()
-    import json as _json
-
-    config = _json.loads(config_file.read_text())
-    assert any("kb_core.js" in p for p in config.get("plugin", []))
-
-
-def test_opencode_agents_install_merges_existing_config(tmp_path):
-    """opencode install preserves existing .opencode/opencode.json keys."""
-    import json as _json
-
-    config_file = tmp_path / ".opencode" / "opencode.json"
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    config_file.write_text(_json.dumps({"model": "claude-opus-4-5", "plugin": []}))
-    _agents_install(tmp_path, "opencode")
-    config = _json.loads(config_file.read_text())
-    assert config["model"] == "claude-opus-4-5"
-    assert any("kb_core.js" in p for p in config["plugin"])
-
-
-def test_opencode_agents_uninstall_removes_plugin(tmp_path):
-    """opencode uninstall removes the plugin file and deregisters from opencode.json."""
-    import json as _json
-
-    _agents_install(tmp_path, "opencode")
-    _agents_uninstall(tmp_path, platform="opencode")
-    plugin = tmp_path / ".opencode" / "plugins" / "kb_core.js"
-    assert not plugin.exists()
-    config_file = tmp_path / ".opencode" / "opencode.json"
-    if config_file.exists():
-        config = _json.loads(config_file.read_text())
-        assert not any("kb_core.js" in p for p in config.get("plugin", []))
-
-
-def test_kilo_agents_install_writes_agents_md(tmp_path):
-    _agents_install(tmp_path, "kilo")
-    assert (tmp_path / "AGENTS.md").exists()
-
-
-def test_kilo_agents_install_writes_plugin(tmp_path):
-    _agents_install(tmp_path, "kilo")
-    plugin = tmp_path / ".kilo" / "plugins" / "kb_core.js"
-    assert plugin.exists()
-    assert "tool.execute.before" in plugin.read_text()
-
-
-def test_kilo_agents_install_registers_plugin_in_config(tmp_path):
-    import json as _json
-
-    _agents_install(tmp_path, "kilo")
-    config_file = tmp_path / ".kilo" / "kilo.json"
-    assert config_file.exists()
-    config = _json.loads(config_file.read_text())
-    assert (
-        tmp_path / ".kilo" / "plugins" / "kb_core.js"
-    ).resolve().as_uri() in config.get("plugin", [])
-
-
-def test_kilo_agents_install_merges_existing_config(tmp_path):
-    import json as _json
-
-    config_file = tmp_path / ".kilo" / "kilo.json"
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    config_file.write_text(
-        _json.dumps({"model": "anthropic/claude-sonnet", "plugin": []})
-    )
-    _agents_install(tmp_path, "kilo")
-    config = _json.loads(config_file.read_text())
-    assert config["model"] == "anthropic/claude-sonnet"
-    assert (
-        tmp_path / ".kilo" / "plugins" / "kb_core.js"
-    ).resolve().as_uri() in config["plugin"]
-
-
-def test_kilo_agents_install_preserves_existing_jsonc_config(tmp_path):
-    import json as _json
-
-    config_file = tmp_path / ".kilo" / "kilo.jsonc"
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    original = """// user comment\n{\n  // preferred model\n  \"model\": \"anthropic/claude-haiku\",\n  \"plugin\": []\n}\n"""
-    config_file.write_text(original)
-    _agents_install(tmp_path, "kilo")
-    json_file = tmp_path / ".kilo" / "kilo.json"
-    config = _json.loads(json_file.read_text())
-    assert config["model"] == "anthropic/claude-haiku"
-    assert (
-        tmp_path / ".kilo" / "plugins" / "kb_core.js"
-    ).resolve().as_uri() in config["plugin"]
-    assert config_file.read_text() == original
-
-
-def test_kilo_agents_uninstall_preserves_existing_jsonc_config(tmp_path):
-    import json as _json
-
-    config_file = tmp_path / ".kilo" / "kilo.jsonc"
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    original = """// user comment\n{\n  \"model\": \"anthropic/claude-haiku\",\n  \"plugin\": []\n}\n"""
-    config_file.write_text(original)
-
-    _agents_install(tmp_path, "kilo")
-    _agents_uninstall(tmp_path, platform="kilo")
-
-    json_file = tmp_path / ".kilo" / "kilo.json"
-    config = _json.loads(json_file.read_text())
-    assert config_file.read_text() == original
-    assert (
-        tmp_path / ".kilo" / "plugins" / "kb_core.js"
-    ).resolve().as_uri() not in config.get("plugin", [])
-
-
-def test_kilo_agents_install_idempotent(tmp_path):
-    import json as _json
-
-    _agents_install(tmp_path, "kilo")
-    _agents_install(tmp_path, "kilo")
-    content = (tmp_path / "AGENTS.md").read_text()
-    config = _json.loads((tmp_path / ".kilo" / "kilo.json").read_text())
-    plugin_uri = (tmp_path / ".kilo" / "plugins" / "kb_core.js").resolve().as_uri()
-    assert content.count("## kb-core") == 1
-    assert config["plugin"].count(plugin_uri) == 1
-
-
-def test_kilo_install_writes_global_and_project_artifacts(tmp_path):
-    home_dir = tmp_path / "home"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    home_dir.mkdir()
-    _kilo_install(project_dir, home_dir)
-    assert (home_dir / ".config" / "kilo" / "skills" / "kb-core" / "SKILL.md").exists()
-    assert (home_dir / ".config" / "kilo" / "command" / "kb_core.md").exists()
-    assert (project_dir / "AGENTS.md").exists()
-    assert (project_dir / ".kilo" / "plugins" / "kb_core.js").exists()
-
-
-def test_kilo_uninstall_removes_plugin_registration_and_command(tmp_path):
-    import json as _json
-
-    home_dir = tmp_path / "home"
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-    home_dir.mkdir()
-    _kilo_install(project_dir, home_dir)
-    _kilo_uninstall(project_dir, home_dir)
-    assert not (home_dir / ".config" / "kilo" / "command" / "kb_core.md").exists()
-    assert not (
-        home_dir / ".config" / "kilo" / "skills" / "kb-core" / "SKILL.md"
-    ).exists()
-    assert not (project_dir / ".kilo" / "plugins" / "kb_core.js").exists()
-    config_file = project_dir / ".kilo" / "kilo.json"
-    if config_file.exists():
-        config = _json.loads(config_file.read_text())
-        assert (
-            project_dir / ".kilo" / "plugins" / "kb_core.js"
-        ).resolve().as_uri() not in config.get("plugin", [])
-
-
-# ── Cursor ────────────────────────────────────────────────────────────────────
-
-
-def test_cursor_install_writes_rule(tmp_path):
-    """cursor install writes .cursor/rules/kb_core.mdc."""
-    from kb_core.__main__ import _cursor_install
-
-    _cursor_install(tmp_path)
-    rule = tmp_path / ".cursor" / "rules" / "kb_core.mdc"
-    assert rule.exists()
-    content = rule.read_text()
-    assert "alwaysApply: true" in content
-    assert "kb-core-out/GRAPH_REPORT.md" in content
-
-
-def test_cursor_install_idempotent(tmp_path):
-    """cursor install does not overwrite an existing rule file."""
-    from kb_core.__main__ import _cursor_install
-
-    _cursor_install(tmp_path)
-    rule = tmp_path / ".cursor" / "rules" / "kb_core.mdc"
-    original = rule.read_text()
-    _cursor_install(tmp_path)
-    assert rule.read_text() == original
-
-
-def test_cursor_uninstall_removes_rule(tmp_path):
-    """cursor uninstall removes the rule file."""
-    from kb_core.__main__ import _cursor_install, _cursor_uninstall
-
-    _cursor_install(tmp_path)
-    _cursor_uninstall(tmp_path)
-    rule = tmp_path / ".cursor" / "rules" / "kb_core.mdc"
-    assert not rule.exists()
-
-
-def test_cursor_uninstall_noop_if_not_installed(tmp_path):
-    """cursor uninstall does nothing if rule was never written."""
-    from kb_core.__main__ import _cursor_uninstall
-
-    _cursor_uninstall(tmp_path)  # should not raise
-
-
-# ── Gemini CLI ────────────────────────────────────────────────────────────────
-
-
-def test_gemini_install_writes_gemini_md(tmp_path):
-    from kb_core.__main__ import gemini_install
-
-    gemini_install(tmp_path)
-    md = tmp_path / "GEMINI.md"
-    assert md.exists()
-    assert "kb-core-out/GRAPH_REPORT.md" in md.read_text()
-
-
-def test_gemini_install_writes_hook(tmp_path):
-    import json as _json
-    from kb_core.__main__ import gemini_install
-
-    gemini_install(tmp_path)
-    settings = _json.loads((tmp_path / ".gemini" / "settings.json").read_text())
-    hooks = settings["hooks"]["BeforeTool"]
-    assert any("kb-core" in str(h) for h in hooks)
-
-
-def test_gemini_install_idempotent(tmp_path):
-    from kb_core.__main__ import gemini_install
-
-    gemini_install(tmp_path)
-    gemini_install(tmp_path)
-    md = tmp_path / "GEMINI.md"
-    assert md.read_text().count("## kb-core") == 1
-
-
-def test_gemini_install_merges_existing_gemini_md(tmp_path):
-    from kb_core.__main__ import gemini_install
-
-    (tmp_path / "GEMINI.md").write_text("# My project rules\n")
-    gemini_install(tmp_path)
-    content = (tmp_path / "GEMINI.md").read_text()
-    assert "# My project rules" in content
-    assert "kb-core-out/GRAPH_REPORT.md" in content
-
-
-def test_gemini_uninstall_removes_section(tmp_path):
-    from kb_core.__main__ import gemini_install, gemini_uninstall
-
-    gemini_install(tmp_path)
-    gemini_uninstall(tmp_path)
-    md = tmp_path / "GEMINI.md"
-    assert not md.exists()
-
-
-def test_gemini_uninstall_removes_hook(tmp_path):
-    import json as _json
-    from kb_core.__main__ import gemini_install, gemini_uninstall
-
-    gemini_install(tmp_path)
-    gemini_uninstall(tmp_path)
-    settings_path = tmp_path / ".gemini" / "settings.json"
-    if settings_path.exists():
-        settings = _json.loads(settings_path.read_text())
-        hooks = settings.get("hooks", {}).get("BeforeTool", [])
-        assert not any("kb-core" in str(h) for h in hooks)
-
-
-def test_gemini_uninstall_noop_if_not_installed(tmp_path):
-    from kb_core.__main__ import gemini_uninstall
-
-    gemini_uninstall(tmp_path)  # should not raise
-
-
-def test_amp_user_install_lands_in_config_agents(tmp_path, monkeypatch):
-    """`kb-core amp install` (user scope) must drop the skill into an Amp search
-    root: ~/.config/agents/skills, not the old ~/.amp/skills."""
-    from kb_core.__main__ import main
-
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    monkeypatch.setattr(sys, "argv", ["kb-core", "amp", "install"])
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        main()
-
-    correct = home / ".config" / "agents" / "skills" / "kb-core" / "SKILL.md"
-    old = home / ".amp" / "skills" / "kb-core" / "SKILL.md"
-    assert correct.exists(), f"amp skill missing from Amp search root {correct}"
-    assert not old.exists(), f"amp skill must not land at the unsearched {old}"
-    # AGENTS.md still written in the project for the always-on rules.
-    assert (project / "AGENTS.md").exists()
-
-
-def test_amp_install_cleans_legacy_amp_skills_dir(tmp_path, monkeypatch):
-    """A pre-fix ~/.amp/skills/kb-core install is removed on the next install."""
-    from kb_core.__main__ import main
-
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    legacy = home / ".amp" / "skills" / "kb-core"
-    legacy.mkdir(parents=True)
-    (legacy / "SKILL.md").write_text("old amp skill", encoding="utf-8")
-    monkeypatch.chdir(project)
-    monkeypatch.setattr(sys, "argv", ["kb-core", "amp", "install"])
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        main()
-
-    assert not legacy.exists(), "legacy ~/.amp/skills/kb-core should be cleaned up"
-    assert (home / ".config" / "agents" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
-def test_amp_user_uninstall_removes_skill_and_agents(tmp_path, monkeypatch):
-    """`kb-core amp uninstall` removes the user-scope skill and AGENTS.md section."""
-    from kb_core.__main__ import main
-
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        monkeypatch.setattr(sys, "argv", ["kb-core", "amp", "install"])
-        main()
-        skill = home / ".config" / "agents" / "skills" / "kb-core" / "SKILL.md"
-        assert skill.exists()
-
-        monkeypatch.setattr(sys, "argv", ["kb-core", "amp", "uninstall"])
-        main()
-
-    assert not skill.exists()
-    assert not (home / ".config" / "agents" / "skills").exists()
-    assert not (project / "AGENTS.md").exists()
-
-
-def test_amp_project_install_lands_in_dot_agents(tmp_path, monkeypatch):
-    """Project-scope amp install lands in .agents/skills, an Amp project search root."""
-    from kb_core.__main__ import main
-
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    monkeypatch.setattr(sys, "argv", ["kb-core", "amp", "install", "--project"])
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        main()
-
-    assert (project / ".agents" / "skills" / "kb-core" / "SKILL.md").exists()
-    assert not (project / ".amp" / "skills" / "kb-core" / "SKILL.md").exists()
-    assert (project / "AGENTS.md").exists()
-    # User scope untouched.
-    assert not (home / ".config" / "agents" / "skills" / "kb-core" / "SKILL.md").exists()
-
-
-def test_uninstall_all_removes_amp_user_skill(tmp_path, monkeypatch):
-    """The user-scope `kb-core uninstall` enumeration removes the amp skill."""
-    from kb_core.__main__ import main
-
-    home = tmp_path / "home"
-    project = tmp_path / "project"
-    project.mkdir()
-    monkeypatch.chdir(project)
-    with patch("kb_core.__main__.Path.home", return_value=home):
-        monkeypatch.setattr(sys, "argv", ["kb-core", "amp", "install"])
-        main()
-        skill = home / ".config" / "agents" / "skills" / "kb-core" / "SKILL.md"
-        assert skill.exists()
-
-        monkeypatch.setattr(sys, "argv", ["kb-core", "uninstall"])
-        main()
-
-    assert not skill.exists()
-
-
-def test_hermes_skill_destination_windows_uses_localappdata():
-    """#1403: on Windows, Hermes scans %LOCALAPPDATA%\\hermes\\skills, so the global
-    skill must land there — not ~/.hermes/skills (the POSIX path)."""
-    from kb_core.__main__ import _platform_skill_destination
-    with patch("kb_core.__main__.platform.system", return_value="Windows"), \
-         patch.dict(os.environ, {"LOCALAPPDATA": str(Path("/tmp/AppDataLocal"))}):
-        dst = _platform_skill_destination("hermes", project=False)
-    assert dst == Path("/tmp/AppDataLocal") / "hermes" / "skills" / "kb-core" / "SKILL.md", dst
-
-
-def test_hermes_skill_destination_posix_uses_home():
-    """Non-Windows hermes destination is unchanged (~/.hermes/skills)."""
-    from kb_core.__main__ import _platform_skill_destination
-    with patch("kb_core.__main__.platform.system", return_value="Linux"):
-        dst = _platform_skill_destination("hermes", project=False)
-    assert str(dst).endswith(".hermes/skills/kb-core/SKILL.md"), dst
 
 
 def _cli_dispatched_commands() -> set[str]:

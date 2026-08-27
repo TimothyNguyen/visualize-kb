@@ -1,10 +1,10 @@
 """Rigorous edge-case coverage for the `kb-core hook-guard` subcommand (#522).
 
-Covers the shell-agnostic PreToolUse/BeforeTool guard that replaced the inline
-bash hooks: the search/read detection matrix, the gemini BeforeTool contract,
-fail-open behavior, output-dir overrides, subcommand dispatch, exit codes, and
-UTF-8 (em dash) byte fidelity. Detection is exercised by calling _run_hook_guard
-directly (hermetic, fast); dispatch/exit/encoding go through a real subprocess.
+Covers the shell-agnostic PreToolUse guard that replaced the inline bash
+hooks: the search/read detection matrix, fail-open behavior, output-dir
+overrides, subcommand dispatch, exit codes, and UTF-8 (em dash) byte fidelity.
+Detection is exercised by calling _run_hook_guard directly (hermetic, fast);
+dispatch/exit/encoding go through a real subprocess.
 """
 import io
 import json
@@ -200,30 +200,6 @@ def test_search_out_path_error_is_swallowed(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# gemini: BeforeTool contract (always allow; nudge only when a graph exists)
-# --------------------------------------------------------------------------- #
-def test_gemini_allow_with_nudge(tmp_path, monkeypatch):
-    out = _invoke("gemini", None, tmp_path, monkeypatch, graph=True)
-    payload = json.loads(out)
-    assert payload["decision"] == "allow"
-    assert "kb-core query" in payload["additionalContext"]
-
-
-def test_gemini_allow_without_graph(tmp_path, monkeypatch):
-    out = _invoke("gemini", None, tmp_path, monkeypatch, graph=False)
-    payload = json.loads(out)
-    assert payload == {"decision": "allow"}
-
-
-def test_gemini_always_allows_even_when_check_throws(tmp_path, monkeypatch):
-    def _boom(*a, **k):
-        raise OSError("boom")
-    monkeypatch.setattr("kb_core.paths.out_path", _boom)
-    out = _invoke("gemini", None, tmp_path, monkeypatch, graph=True)
-    assert json.loads(out) == {"decision": "allow"}
-
-
-# --------------------------------------------------------------------------- #
 # subcommand dispatch, exit codes, and UTF-8 fidelity (real subprocess)
 # --------------------------------------------------------------------------- #
 def _env():
@@ -254,7 +230,6 @@ def test_dispatch_unknown_mode_exits_zero_silent(tmp_path):
 @pytest.mark.parametrize("args,stdin", [
     (["hook-guard", "search"], '{"tool_input":{"command":"grep x"}}'),
     (["hook-guard", "read"], '{"tool_input":{"file_path":"a.py"}}'),
-    (["hook-guard", "gemini"], ""),
 ])
 def test_dispatch_always_exits_zero(args, stdin, tmp_path):
     # even with a graph present (nudge path), exit code must be 0 (never blocks)

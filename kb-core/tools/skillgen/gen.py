@@ -64,12 +64,6 @@ def _v8_baseline_ref(platform_key: str) -> str:
     """The git ref for a split host's own pre-split skill body."""
     if platform_key == "claude":
         return f"{_V8_BASELINE_SHA}:{_LEGACY_PACKAGE}/skill.md"
-    if platform_key == "agents":
-        # `agents` is a post-v8 platform with no own v8 body — it re-homes amp's
-        # agents-md body at the generic ~/.agents/skills location. Its render is
-        # amp's modulo the install/uninstall command wording (prose, not headings),
-        # so amp's v8 body is the correct per-host coverage baseline.
-        return f"{_V8_BASELINE_SHA}:{_LEGACY_PACKAGE}/skill-amp.md"
     return f"{_V8_BASELINE_SHA}:{_LEGACY_PACKAGE}/skill-{platform_key}.md"
 
 # Immutable baseline for --always-on-roundtrip. The six always-on instruction
@@ -89,10 +83,7 @@ ALWAYS_ON_BASELINE_REF = f"{_V8_BASELINE_SHA}:{_LEGACY_PACKAGE}/__main__.py"
 ALWAYS_ON_BLOCKS = {
     "claude-md": "_CLAUDE_MD_SECTION",
     "agents-md": "_AGENTS_MD_SECTION",
-    "gemini-md": "_GEMINI_MD_SECTION",
     "vscode-instructions": "_VSCODE_INSTRUCTIONS_SECTION",
-    "antigravity-rules": "_ANTIGRAVITY_RULES",
-    "kiro-steering": "_KIRO_STEERING",
 }
 
 # Sanctioned divergences from the frozen always-on baseline above. The roundtrip
@@ -143,61 +134,16 @@ _EXTRACTION_SOURCE = {
 # weaker matcher (#1325).
 _QUERY_REFERENCE = "references/query/default.md"
 _QUERY_STUB = "query-stub/default.md"
-# The hooks reference is host-flavored. Most hosts read CLAUDE.md and wire
-# always-on via `kb_core claude install` (the shared body). The agents-md hosts
-# (trae, trae-cn, amp) read AGENTS.md and wire it via `kb_core <host> install`.
-# The agents-md fragment is a per-host template: the install/uninstall commands,
-# the host display name, the heading suffix, and the PreToolUse caveat are slots
-# filled from _AGENTS_MD_HOOKS per host. trae carries the v8 caveat that Trae does
-# NOT support PreToolUse hooks; amp's v8 had no such caveat, so its slot is empty.
-# Each variant also drives the @@HOOKS_TARGET@@ pointer text in the core. The
-# variant key matches the prose target file the pointer names.
+# The hooks reference is host-flavored. Every kept host reads CLAUDE.md and
+# wires always-on via `kb_core claude install` (the shared body). Each variant
+# also drives the @@HOOKS_TARGET@@ pointer text in the core. The variant key
+# matches the prose target file the pointer names.
 _HOOKS_SOURCE = {
     "claude-md": "references/shared/hooks.md",
-    "agents-md": "references/host/hooks-agents-md.md",
-}
-
-# Per-host slots for the agents-md hooks reference template. Rendered EXACTLY as
-# that host's v8 skill body had the "## For native AGENTS.md integration" section.
-# trae's v8 heading carried a "(Trae)" suffix, the trae/trae-cn alt-command
-# comments, and the no-PreToolUse-hooks Note; amp's v8 had a bare heading, a single
-# install/uninstall line, and NO caveat. These are byte-faithful to v8.
-_TRAE_PRETOOLUSE_NOTE = (
-    "\n> **Note:** Unlike Claude Code, Trae does NOT support PreToolUse hooks. "
-    "The AGENTS.md rules are the always-on mechanism — there is no automatic graph "
-    "rebuild on tool use. Run `/kb-core --update` manually after code changes if "
-    "the graph needs refreshing.\n"
-)
-_AGENTS_MD_HOOKS: dict[str, dict[str, str]] = {
-    "trae": {
-        "heading_suffix": " (Trae)",
-        "host_display": "Trae",
-        "install_block": "kb-core trae install       # or: kb-core trae-cn install",
-        "uninstall_block": "kb-core trae uninstall     # or: kb-core trae-cn uninstall   # remove the section",
-        "pretooluse_note": _TRAE_PRETOOLUSE_NOTE,
-    },
-    "amp": {
-        "heading_suffix": "",
-        "host_display": "Amp",
-        "install_block": "kb-core amp install",
-        "uninstall_block": "kb-core amp uninstall  # remove the section",
-        "pretooluse_note": "",
-    },
-    "agents": {
-        # The generic cross-framework Agent-Skills target. Mirrors amp's bare,
-        # caveat-free agents-md section, worded for an unspecified host and
-        # pointing at `kb_core agents install` (which wires AGENTS.md, like amp).
-        "heading_suffix": "",
-        "host_display": "your agent",
-        "install_block": "kb-core agents install",
-        "uninstall_block": "kb-core agents uninstall  # remove the section",
-        "pretooluse_note": "",
-    },
 }
 # The prose file name the lean-core hooks pointer names, per hooks variant.
 _HOOKS_TARGET = {
     "claude-md": "CLAUDE.md",
-    "agents-md": "AGENTS.md",
 }
 
 # Allowlist for the per-host coverage audit (waves 2-3 consolidations).
@@ -232,20 +178,6 @@ SHARED_INTRO_ALLOWLIST: frozenset[str] = frozenset({
 })
 
 _CONSOLIDATION_ALLOWLIST: dict[str, frozenset[str]] = {
-    # kilo's terse v8 step/part/section headings, renamed/re-leveled by the
-    # shared lean core. Content is preserved under the core's richer headings
-    # (Step 4 build/cluster/analyze, Step 5 label, Step 6 HTML, Step 9 report)
-    # and the query stub + references/query.md; "### Kilo-specific rules" is the
-    # same content promoted to "## Kilo-specific rules".
-    "kilo": frozenset({
-        "### Step 2.5 - Transcribe video or audio files (only if video files were detected)",
-        "#### Part B - Semantic extraction for docs, papers, and images",
-        "#### Part C - Merge AST and semantic extraction",
-        "### Step 4 - Build the graph and generate outputs",
-        "### Step 5 - Save manifest, clean up, and report",
-        "### Query mode",
-        "### Kilo-specific rules",
-    }),
     # vscode's minimal v8 step/part headings, renamed by the shared lean core.
     # The build/cluster, report/visualization, and completion-summary content is
     # all present under the core's Step 4/5/6/9 headings.
@@ -560,36 +492,6 @@ def _render_core(platform: Platform) -> str:
     return _normalise(body)
 
 
-def _render_agents_md_hooks(platform: Platform) -> str:
-    """Fill the agents-md hooks template's per-host slots for this platform.
-
-    The fragment is one template shared by every AGENTS.md host (trae, trae-cn,
-    amp). The install/uninstall commands, the host display name, the heading
-    suffix, and the PreToolUse caveat are filled from _AGENTS_MD_HOOKS so each host
-    renders its OWN v8 wording — trae keeps the "(Trae)" heading suffix and the
-    no-PreToolUse Note; amp gets a bare heading, single-line commands, and no
-    caveat (its v8 never had one).
-    """
-    template = _read_fragment(_HOOKS_SOURCE["agents-md"])
-    slots = _AGENTS_MD_HOOKS.get(platform.key)
-    if slots is None:
-        raise ValueError(
-            f"platform '{platform.key}' uses the agents-md hooks variant but has no "
-            f"_AGENTS_MD_HOOKS entry"
-        )
-    body = (
-        template.replace("@@AGENTS_HEADING_SUFFIX@@", slots["heading_suffix"])
-        .replace("@@HOST_DISPLAY@@", slots["host_display"])
-        .replace("@@AGENTS_INSTALL_BLOCK@@", slots["install_block"])
-        .replace("@@AGENTS_UNINSTALL_BLOCK@@", slots["uninstall_block"])
-        .replace("@@AGENTS_PRETOOLUSE_NOTE@@", slots["pretooluse_note"])
-    )
-    if "@@" in body:
-        leftover = sorted(set(re.findall(r"@@\w+@@", body)))
-        raise ValueError(f"unfilled agents-md hooks slots for '{platform.key}': {leftover}")
-    return _normalise(body)
-
-
 def _platform_command_syntax(body: str, platform: Platform) -> str:
     """Render host-native skill invocation syntax without changing shell commands."""
     if platform.key == "codex":
@@ -626,12 +528,7 @@ def render(platform: Platform) -> list[RenderedArtifact]:
     references = platform.reference_sources()
     # Sorted reference index keeps the output idempotent regardless of map order.
     for name in sorted(references):
-        # The agents-md hooks reference is a per-host template; everything else is
-        # read verbatim.
-        if name == "hooks" and platform.hooks_variant == "agents-md":
-            body = _render_agents_md_hooks(platform)
-        else:
-            body = _read_fragment(references[name])
+        body = _read_fragment(references[name])
         rel = f"{platform.refs_dst}/{name}.md"
         artifacts.append(RenderedArtifact(rel, _platform_command_syntax(body, platform)))
     return artifacts

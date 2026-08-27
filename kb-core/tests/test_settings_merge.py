@@ -21,17 +21,13 @@ import pytest
 
 from kb_core.install import (
     _install_claude_hook,
-    _install_codebuddy_hook,
     _install_codex_hook,
-    _install_gemini_hook,
 )
 
 # installer key -> (function, settings file relative to project dir, hooks section)
 _INSTALLERS = {
     "claude": (_install_claude_hook, Path(".claude") / "settings.json", "PreToolUse"),
-    "codebuddy": (_install_codebuddy_hook, Path(".codebuddy") / "settings.json", "PreToolUse"),
     "codex": (_install_codex_hook, Path(".codex") / "hooks.json", "PreToolUse"),
-    "gemini": (_install_gemini_hook, Path(".gemini") / "settings.json", "BeforeTool"),
 }
 
 ALL_INSTALLERS = pytest.mark.parametrize("installer", sorted(_INSTALLERS), ids=sorted(_INSTALLERS))

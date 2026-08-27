@@ -762,7 +762,7 @@ SECTION_ARCHETYPES = [
         "CLI & Skill Installers",
         {
             "main", "install", "uninstall", "skill", "agent", "claude",
-            "codex", "opencode", "aider", "copilot", "kiro", "vscode",
+            "codex", "copilot", "vscode", "windows",
             "hook", "command",
         },
     ),
