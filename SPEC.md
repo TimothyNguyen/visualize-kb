@@ -76,7 +76,7 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |T8|x|Port memory store, embedding interface, CRUD/search behavior, and bot runner behavior.|V5,V8|
 |T9|x|Port REST service. Run route parity cases against Go and Python.|V5,V8|
 |T10|x|Port MCP service. Run tool-list, schema, graph-tool, and memory-tool parity cases.|V5,V8|
-|T11|.|Run React against Python. Keep client types and visible flows compatible.|V9|
+|T11|x|Run React against Python. Keep client types and visible flows compatible.|V9|
 |T12|.|Gate Python default-runtime switch on CI parity. Move Go module to `kb-core-ui/legacy/go/`; retain optional legacy oracle suite.|V10,V11|
 
 ## §B
@@ -93,3 +93,5 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |B8|2026-08-28|`internal/mcp` marshals store slices direct; empty go slice built by append = nil → `null`. REST wraps same calls in `nonNil()` → `[]` ∴ 2 surfaces ≠ on empty case by design|`_marshal_list` → `None` when empty, MCP only|
 |B9|2026-08-28|`store.Stats` ⊥ json tags ∴ `encoding/json` emits go field names: MCP `get_stats` → `Files/Symbols/Edges/Languages`. REST `/api/stats` builds own lowercase map ∴ ≠|MCP `get_stats` emits capitalized keys|
 |B10|2026-08-28|py `open()` on win sets errno only, `strerror` = POSIX `No such file or directory`; go `os.ReadFile` → `*os.PathError` w/ win32 text `open <p>: The system cannot find the file specified.` ∴ `read failed:` ≠|`errors.py::os_error_text` — recover winerror via `os.stat`, render w/ `ctypes.FormatError`; POSIX → lowercase 1st char (go errno table)|
+|B11|2026-08-28|py `server/app.py` had hardcoded content-type map; go `http.ServeFile` → `mime.TypeByExtension` reads win registry ∴ `.js` = `application/javascript` (go) ≠ `text/javascript; charset=utf-8` (py). Hardcoding ⊥ portable: stock linux table gives `text/javascript`|`mimetypes.guess_type` (reads same registry) + go `setExtensionType` rule: append `charset=utf-8` ∀ `text/*` w/o one|
+|B12|2026-08-28|go buffers handler body ≤2048B → sets `Content-Length`; >2048B → chunked ∴ `/api/bots` (2.7KB) ⊥ `Content-Length`, py always sets it|`Content-Length` ∉ `status_headers` capture: framing ⊥ contract, same bytes either way; comparing it pins port to go internal buffer size|

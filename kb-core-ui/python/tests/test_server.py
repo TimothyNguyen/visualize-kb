@@ -264,3 +264,65 @@ def test_bots_disabled_when_no_runner(graph_app):
 def test_memory_disabled_when_no_store(graph_app):
     status, _, _ = request(graph_app, "GET", "/api/memory")
     assert status != 200
+
+
+@pytest.fixture
+def spa_app(tmp_path):
+    """A Server with a web_dir, as `serve` builds when web/dist exists."""
+    web = tmp_path / "dist"
+    (web / "assets").mkdir(parents=True)
+    # Written as bytes: the handler serves files verbatim, so a fixture that
+    # let Windows translate \n to \r\n would be asserting the wrong thing.
+    (web / "index.html").write_bytes(b"<!doctype html><div id=root></div>")
+    (web / "assets" / "app.js").write_bytes(b"export const x = 1\n")
+    (web / "assets" / "app.css").write_bytes(b".x{color:red}\n")
+    (web / "favicon.svg").write_bytes(b"<svg/>")
+    with Store(str(tmp_path / "graph.db")) as store:
+        yield Server(store, str(tmp_path), str(web), None, None)
+
+
+def test_spa_serves_static_files(spa_app):
+    status, _, text = request(spa_app, "GET", "/assets/app.js")
+    assert status == 200
+    assert text == "export const x = 1\n"
+
+
+def test_spa_falls_back_to_index_for_client_routes(spa_app):
+    """A client-side route is not a real file, so it must return index.html
+    rather than 404 — otherwise a deep link or a refresh breaks the app."""
+    index = request(spa_app, "GET", "/")[2]
+    assert request(spa_app, "GET", "/symbols/does-not-exist")[2] == index
+    assert request(spa_app, "GET", "/memory")[2] == index
+
+
+def test_spa_does_not_shadow_the_api(spa_app):
+    # /api/* patterns are more specific than "/", so they still win.
+    status, body, _ = request(spa_app, "GET", "/api/stats")
+    assert status == 200
+    assert body["files"] == 0
+
+
+def test_content_types_follow_the_platform_mime_table(spa_app):
+    def content_type(path):
+        req = Request(
+            method="GET", raw_path=path, path=path, query={}, query_string="", body=b""
+        )
+        return spa_app.serve(req).headers["Content-Type"]
+
+    # Go appends charset=utf-8 to text/* types that lack one, and leaves
+    # everything else as the mime table gives it.
+    assert content_type("/assets/app.css") == "text/css; charset=utf-8"
+    assert content_type("/").startswith("text/html")
+    assert content_type("/favicon.svg") == "image/svg+xml"
+    js = content_type("/assets/app.js")
+    assert js in ("application/javascript", "text/javascript; charset=utf-8")
+
+
+def test_spa_path_traversal_falls_back_to_index(spa_app):
+    """The mux cleans the path before dispatch, so ../ never reaches the file
+    read; a cleaned path that is not a real file lands on index.html."""
+    index = request(spa_app, "GET", "/")[2]
+    status, _, text = request(spa_app, "GET", "/assets/../../../../etc/passwd")
+    assert status in (200, 301)
+    if status == 200:
+        assert text == index

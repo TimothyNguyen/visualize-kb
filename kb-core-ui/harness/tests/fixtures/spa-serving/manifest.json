@@ -1,0 +1,102 @@
+{
+  "name": "spa-serving",
+  "repo": "repo",
+  "operations": [
+    {
+      "id": "index",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/",
+      "capture": "status_text_body",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "index-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "spa-fallback-deep-route",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/symbols/does-not-exist",
+      "capture": "status_text_body",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "js-bundle-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/assets/index-DLrcYNu3.js",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "css-bundle-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/assets/index-DJIuUXvX.css",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "favicon-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/favicon.svg",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "graph-json-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/kb-core-out/graph.json",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "api-404-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/files/symbols",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "api-error-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/symbols/nope",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "api-ok-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/stats",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-list-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/memory",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "bots-roster-headers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/bots",
+      "capture": "status_headers",
+      "normalizers": ["fixture_root_path"]
+    }
+  ]
+}

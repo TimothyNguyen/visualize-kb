@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -46,6 +46,7 @@ class RestResult:
     status: int
     json_body: Any | None
     text_body: str
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 def _make_writable(path: Path) -> None:
@@ -64,18 +65,28 @@ class RestSession:
         req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
-                body = resp.read().decode("utf-8")
+                raw = resp.read()
                 status = resp.status
+                headers = dict(resp.headers.items())
         except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8")
+            raw = exc.read()
             status = exc.code
+            headers = dict(exc.headers.items())
+        # Static assets are not text; decode leniently so a binary body still
+        # yields a comparable length without corrupting the JSON paths.
+        body = raw.decode("utf-8", errors="replace")
         json_body = None
         if body:
             try:
                 json_body = json.loads(body)
             except json.JSONDecodeError:
                 json_body = None
-        return RestResult(status=status, json_body=json_body, text_body=body)
+        return RestResult(
+            status=status,
+            json_body=json_body,
+            text_body=body,
+            headers={k.lower(): v for k, v in headers.items()},
+        )
 
     def get(self, route: str, params: dict[str, str] | None = None) -> RestResult:
         url = self.base_url + route

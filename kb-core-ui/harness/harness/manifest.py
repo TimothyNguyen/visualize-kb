@@ -13,6 +13,7 @@ _VALID_CAPTURES = {
     "stdout_stderr_exit",
     "json_body_status",
     "status_text_body",
+    "status_headers",
     "json_result",
 }
 _VALID_FS_OPS = {"replace", "delete"}

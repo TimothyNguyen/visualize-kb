@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-08-28T20:39:04.972608+00:00",
+  "comparable": {
+    "status": 200,
+    "text_body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>KB Core UI</title>\n    <script type=\"module\" crossorigin src=\"/assets/index-DLrcYNu3.js\"></script>\n    <link rel=\"stylesheet\" crossorigin href=\"/assets/index-DJIuUXvX.css\">\n  </head>\n  <body>\n    <div id=\"root\"></div>\n\n  </body>\n</html>\n"
+  },
+  "engine": "go",
+  "fixture": "spa-serving",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "index"
+}

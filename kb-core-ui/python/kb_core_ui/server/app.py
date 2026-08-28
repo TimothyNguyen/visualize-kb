@@ -7,6 +7,7 @@ Python responses body-for-body.
 
 from __future__ import annotations
 
+import mimetypes
 import os
 import threading
 from typing import Any, Callable
@@ -394,21 +395,26 @@ class Server:
 # ---- helpers -----------------------------------------------------------
 
 
-_CONTENT_TYPES = {
-    ".css": "text/css; charset=utf-8",
-    ".html": "text/html; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".json": "application/json",
-    ".map": "application/json",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-    ".ico": "image/x-icon",
-    ".woff2": "font/woff2",
-}
-
-
 def _content_type(path: str) -> str:
-    return _CONTENT_TYPES.get(os.path.splitext(path)[1].lower(), "application/octet-stream")
+    """http.ServeFile's Content-Type, which comes from Go's mime package.
+
+    On Windows that package reads the same registry Python's mimetypes does,
+    so both agree on the raw type (.js is application/javascript here but
+    text/javascript on a stock Linux table) — hardcoding a table would make
+    the port disagree with Go on whichever platform it was not written for.
+
+    Go's setExtensionType then appends charset=utf-8 to any text/* type that
+    lacks one, which is why .css comes back as "text/css; charset=utf-8"
+    while .js keeps its bare application/javascript.
+    """
+    guessed, _ = mimetypes.guess_type(path)
+    if guessed is None:
+        # http.ServeFile falls back to sniffing the first 512 bytes;
+        # DetectContentType's default for anything unrecognized.
+        return "application/octet-stream"
+    if guessed.startswith("text/") and "charset=" not in guessed:
+        return guessed + "; charset=utf-8"
+    return guessed
 
 
 def _trim_prefix(s: str, prefix: str) -> str:

@@ -125,6 +125,34 @@ def canonical_dumps(value: Any) -> str:
     return json.dumps(value, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
 
 
+# Which response headers are contract rather than transport. Content-Type
+# decides whether a browser executes a .js asset or renders it as text, so it
+# is exactly the kind of difference that breaks the React app while every
+# body still matches. Date, Server, Connection, Last-Modified and friends are
+# per-process or per-implementation and carry no contract, so a capture that
+# included them could never pass.
+#
+# Content-Length is deliberately absent too. It is framing, not contract: Go
+# buffers a handler response up to 2048 bytes and sets Content-Length, then
+# switches to chunked encoding past that, so /api/bots sends no
+# Content-Length purely because its roster is 2.7KB. A client receives the
+# same bytes either way, and comparing it would pin the port to an internal
+# Go buffer size.
+#
+# This is a capture, not an ignore list: it declares what is observed, the
+# same way stdout_exit observes stdout and stdout_stderr_exit observes both.
+_CONTRACT_HEADERS = frozenset(
+    {
+        "content-type",
+        "location",
+        "x-content-type-options",
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+    }
+)
+
+
 def to_comparable(capture: str, raw: Any) -> dict[str, Any]:
     if capture == "stdout_exit":
         return {"exit_code": raw.exit_code, "stdout": raw.stdout}
@@ -134,6 +162,11 @@ def to_comparable(capture: str, raw: Any) -> dict[str, Any]:
         return {"status": raw.status, "body": raw.json_body}
     if capture == "status_text_body":
         return {"status": raw.status, "text_body": raw.text_body}
+    if capture == "status_headers":
+        return {
+            "status": raw.status,
+            "headers": {k: v for k, v in raw.headers.items() if k in _CONTRACT_HEADERS},
+        }
     if capture == "json_result":
         return {"result": raw}
     raise ManifestError(f"unknown capture kind {capture!r}")
