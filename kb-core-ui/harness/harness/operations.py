@@ -78,4 +78,15 @@ def execute_operation(
         mcp = sessions.mcp()
         return mcp.call_tool(op.tool, op.params)
 
+    if op.kind == "fs":
+        target = ctx.fixture_root / op.path
+        if op.fs_op == "replace":
+            text = target.read_text(encoding="utf-8")
+            target.write_text(text.replace(op.find, op.replace, 1), encoding="utf-8")
+        elif op.fs_op == "delete":
+            target.unlink(missing_ok=True)
+        else:
+            raise EngineError(f"unsupported fs_op {op.fs_op!r} for operation {op.id!r}")
+        return None
+
     raise EngineError(f"unsupported operation kind {op.kind!r} for operation {op.id!r}")

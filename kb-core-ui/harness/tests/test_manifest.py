@@ -123,6 +123,73 @@ def test_load_manifest_parses_setup_operations(tmp_path: Path):
     assert fixture.operations[0].setup[0].id == "seed"
 
 
+def test_load_manifest_parses_fs_replace_setup_operation(tmp_path: Path):
+    path = _write_manifest(
+        tmp_path,
+        [
+            {
+                "id": "main",
+                "kind": "rest",
+                "method": "GET",
+                "route": "/api/graph",
+                "setup": [
+                    {"id": "mutate", "kind": "fs", "fs_op": "replace", "path": "a.go", "find": "A", "replace": "B"}
+                ],
+            }
+        ],
+    )
+    fixture = load_manifest(path)
+    setup_op = fixture.operations[0].setup[0]
+    assert setup_op.fs_op == "replace"
+    assert setup_op.path == "a.go"
+    assert setup_op.find == "A"
+    assert setup_op.replace == "B"
+
+
+def test_load_manifest_parses_fs_delete_setup_operation(tmp_path: Path):
+    path = _write_manifest(
+        tmp_path,
+        [
+            {
+                "id": "main",
+                "kind": "rest",
+                "method": "GET",
+                "route": "/api/graph",
+                "setup": [{"id": "rm", "kind": "fs", "fs_op": "delete", "path": "b.go"}],
+            }
+        ],
+    )
+    fixture = load_manifest(path)
+    assert fixture.operations[0].setup[0].fs_op == "delete"
+
+
+def test_load_manifest_fs_kind_at_top_level_raises(tmp_path: Path):
+    with pytest.raises(ManifestError):
+        load_manifest(
+            _write_manifest(tmp_path, [{"id": "a", "kind": "fs", "fs_op": "delete", "path": "a.go"}])
+        )
+
+
+@pytest.mark.parametrize(
+    "fs_op",
+    [
+        {"id": "a", "kind": "fs"},
+        {"id": "a", "kind": "fs", "fs_op": "bogus", "path": "a.go"},
+        {"id": "a", "kind": "fs", "fs_op": "delete"},
+        {"id": "a", "kind": "fs", "fs_op": "replace", "path": "a.go"},
+        {"id": "a", "kind": "fs", "fs_op": "replace", "path": "a.go", "find": "A"},
+    ],
+)
+def test_load_manifest_invalid_fs_operation_raises(tmp_path: Path, fs_op: dict):
+    with pytest.raises(ManifestError):
+        load_manifest(
+            _write_manifest(
+                tmp_path,
+                [{"id": "main", "kind": "cli", "command": "parse", "setup": [fs_op]}],
+            )
+        )
+
+
 def test_discover_fixtures_finds_smoke_fixture():
     fixtures_dir = Path(__file__).resolve().parent / "fixtures"
     fixtures = discover_fixtures(fixtures_dir)

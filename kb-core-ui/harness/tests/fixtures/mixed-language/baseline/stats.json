@@ -1,23 +1,24 @@
 {
-  "captured_at": "2026-08-28T00:32:57.773293+00:00",
+  "captured_at": "2026-08-28T00:32:55.595280+00:00",
   "comparable": {
     "body": {
       "edges": 0,
-      "files": 2,
+      "files": 3,
       "languages": {
         "go": 1,
-        "python": 1
+        "python": 1,
+        "typescript": 1
       },
-      "symbols": 2
+      "symbols": 3
     },
     "status": 200
   },
   "engine": "go",
-  "fixture": "smoke",
+  "fixture": "mixed-language",
   "harness_version": "0.1.0",
   "ignore_fields": [],
   "normalizers": [
     "fixture_root_path"
   ],
-  "operation_id": "rest-stats"
+  "operation_id": "stats"
 }

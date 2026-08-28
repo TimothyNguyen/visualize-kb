@@ -1,0 +1,27 @@
+{
+  "captured_at": "2026-08-28T00:32:49.808178+00:00",
+  "comparable": {
+    "body": {
+      "edges": [],
+      "nodes": [
+        {
+          "endLine": 6,
+          "filePath": "hello.go",
+          "id": "hello.go:AddTwo",
+          "kind": "function",
+          "name": "AddTwo",
+          "startLine": 4
+        }
+      ]
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "changed-file",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "graph-after-change"
+}

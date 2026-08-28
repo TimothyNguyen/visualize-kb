@@ -1,35 +1,35 @@
 {
-  "captured_at": "2026-08-28T00:32:57.787517+00:00",
+  "captured_at": "2026-08-28T00:32:54.979814+00:00",
   "comparable": {
     "body": {
       "edges": [],
       "nodes": [
         {
           "endLine": 5,
-          "filePath": "hello.go",
-          "id": "hello.go:Add",
+          "filePath": "broken.go",
+          "id": "broken.go:Oops",
           "kind": "function",
-          "name": "Add",
+          "name": "Oops",
           "startLine": 3
         },
         {
-          "endLine": 2,
-          "filePath": "hello.py",
-          "id": "hello.py:add",
+          "endLine": 6,
+          "filePath": "valid.go",
+          "id": "valid.go:Ok",
           "kind": "function",
-          "name": "add",
-          "startLine": 1
+          "name": "Ok",
+          "startLine": 4
         }
       ]
     },
     "status": 200
   },
   "engine": "go",
-  "fixture": "smoke",
+  "fixture": "malformed",
   "harness_version": "0.1.0",
   "ignore_fields": [],
   "normalizers": [
     "fixture_root_path"
   ],
-  "operation_id": "rest-graph"
+  "operation_id": "graph"
 }

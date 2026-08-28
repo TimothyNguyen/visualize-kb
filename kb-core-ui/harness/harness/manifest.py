@@ -7,8 +7,9 @@ from pathlib import Path
 from harness.canonical import NORMALIZERS
 from harness.errors import ManifestError
 
-_VALID_KINDS = {"cli", "rest", "mcp"}
+_VALID_KINDS = {"cli", "rest", "mcp", "fs"}
 _VALID_CAPTURES = {"stdout_exit", "json_body_status", "json_result"}
+_VALID_FS_OPS = {"replace", "delete"}
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,10 @@ class Operation:
     route: str | None = None
     params: dict[str, str] = field(default_factory=dict)
     tool: str | None = None
+    fs_op: str | None = None
+    path: str | None = None
+    find: str | None = None
+    replace: str | None = None
     capture: str = "stdout_exit"
     normalizers: list[str] = field(default_factory=list)
     ignore_fields: list[str] = field(default_factory=list)
@@ -35,7 +40,7 @@ class Fixture:
     operations: list[Operation]
 
 
-def _parse_operation(raw: dict, manifest_path: Path) -> Operation:
+def _parse_operation(raw: dict, manifest_path: Path, in_setup: bool = False) -> Operation:
     op_id = raw.get("id")
     if not op_id:
         raise ManifestError(f"{manifest_path}: operation missing 'id'")
@@ -50,6 +55,20 @@ def _parse_operation(raw: dict, manifest_path: Path) -> Operation:
         raise ManifestError(f"{manifest_path}: rest operation {op_id!r} missing 'method'/'route'")
     if kind == "mcp" and not raw.get("tool"):
         raise ManifestError(f"{manifest_path}: mcp operation {op_id!r} missing 'tool'")
+    if kind == "fs":
+        if not in_setup:
+            raise ManifestError(
+                f"{manifest_path}: fs operation {op_id!r} only allowed inside 'setup'"
+            )
+        fs_op = raw.get("fs_op")
+        if fs_op not in _VALID_FS_OPS:
+            raise ManifestError(f"{manifest_path}: fs operation {op_id!r} has invalid fs_op {fs_op!r}")
+        if not raw.get("path"):
+            raise ManifestError(f"{manifest_path}: fs operation {op_id!r} missing 'path'")
+        if fs_op == "replace" and (raw.get("find") is None or raw.get("replace") is None):
+            raise ManifestError(
+                f"{manifest_path}: fs replace operation {op_id!r} missing 'find'/'replace'"
+            )
 
     capture = raw.get("capture", "stdout_exit")
     if capture not in _VALID_CAPTURES:
@@ -70,7 +89,7 @@ def _parse_operation(raw: dict, manifest_path: Path) -> Operation:
             )
 
     setup_raw = raw.get("setup", [])
-    setup = [_parse_operation(s, manifest_path) for s in setup_raw]
+    setup = [_parse_operation(s, manifest_path, in_setup=True) for s in setup_raw]
 
     return Operation(
         id=op_id,
@@ -81,6 +100,10 @@ def _parse_operation(raw: dict, manifest_path: Path) -> Operation:
         route=raw.get("route"),
         params=raw.get("params", {}),
         tool=raw.get("tool"),
+        fs_op=raw.get("fs_op"),
+        path=raw.get("path"),
+        find=raw.get("find"),
+        replace=raw.get("replace"),
         capture=capture,
         normalizers=normalizers,
         ignore_fields=ignore_fields,
