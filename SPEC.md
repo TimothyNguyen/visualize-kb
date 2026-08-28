@@ -67,9 +67,9 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |id|status|task|cites|
 |---|---|---|---|
 |T1|.|Capture Go CLI help, REST, MCP `tools/list`, graph JSON, and error baseline fixtures.|V1,V5|
-|T2|.|Create fixture repositories for Go, Python, TypeScript, mixed-language, malformed, changed, and deleted-file cases.|V1,V6,V7|
-|T3|.|Build canonicalizer and structured JSON diff reporter with per-case normalizer allowlist.|V2,V3|
-|T4|.|Build dual-process harness: `record`, `parity`, `verify`, `report`; isolated temp roots and databases.|V1,V4|
+|T2|x|Create fixture repositories for Go, Python, TypeScript, mixed-language, malformed, changed, and deleted-file cases.|V1,V6,V7|
+|T3|x|Build canonicalizer and structured JSON diff reporter with per-case normalizer allowlist.|V2,V3|
+|T4|x|Build dual-process harness: `record`, `parity`, `verify`, `report`; isolated temp roots and databases.|V1,V4|
 |T5|.|Create Python package, configuration, typed models, error model, and CLI skeleton.|V5|
 |T6|.|Port parser dispatch and Go/Python/TypeScript extraction. Add parser parity cases.|V6,V8|
 |T7|.|Port graph builder, code indexer, SQLite code store, migrations, and incremental index behavior.|V7,V8|
