@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -73,9 +74,39 @@ GO_ENGINE = EngineConfig(
     mcp_template=["{bin}", "mcp", "{repo}", "--db", "{db}"],
 )
 
-# T5+ (Python port) adds ENGINES["python"] = EngineConfig(...) here — zero
-# changes to runner.py/canonical.py/diff.py/operations.py required.
-ENGINES: dict[str, EngineConfig] = {"go": GO_ENGINE}
+def resolve_python_binary(explicit: str | None = None) -> str:
+    if explicit:
+        return explicit
+    env = os.environ.get("KB_CORE_UI_PY_BIN")
+    if env:
+        return env
+    # The port is invoked as `python -m kb_core_ui`, so the "binary" is the
+    # interpreter running the harness — the same venv the port is installed
+    # into.
+    return sys.executable
+
+
+def _python_templates() -> dict[str, list[str]]:
+    """Every Go CLI template with {bin} replaced by `{bin} -m kb_core_ui`, so
+    the two engines stay argument-for-argument identical by construction."""
+    return {
+        name: ["{bin}", "-m", "kb_core_ui", *template[1:]]
+        for name, template in GO_CLI_TEMPLATES.items()
+    }
+
+
+PYTHON_ENGINE = EngineConfig(
+    name="python",
+    resolve_bin=resolve_python_binary,
+    cli_templates=_python_templates(),
+    serve_template=[
+        "{bin}", "-m", "kb_core_ui", "serve", "{repo}",
+        "--db", "{db}", "--port", "{port}", "--open=false",
+    ],
+    mcp_template=["{bin}", "-m", "kb_core_ui", "mcp", "{repo}", "--db", "{db}"],
+)
+
+ENGINES: dict[str, EngineConfig] = {"go": GO_ENGINE, "python": PYTHON_ENGINE}
 
 
 def render_argv(template: list[str], values: dict[str, str]) -> list[str]:

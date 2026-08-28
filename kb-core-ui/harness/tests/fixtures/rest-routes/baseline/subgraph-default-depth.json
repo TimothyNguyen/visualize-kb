@@ -1,0 +1,56 @@
+{
+  "captured_at": "2026-08-28T19:05:20.697759+00:00",
+  "comparable": {
+    "body": {
+      "center": "pkg/mathutil.go:Add",
+      "edges": [
+        {
+          "kind": "contains",
+          "source": "pkg/mathutil.go:Calculator",
+          "target": "pkg/mathutil.go:Calculator.AddTo"
+        },
+        {
+          "kind": "calls",
+          "source": "pkg/mathutil.go:Calculator.AddTo",
+          "target": "pkg/mathutil.go:Add"
+        }
+      ],
+      "nodes": [
+        {
+          "endLine": 9,
+          "filePath": "pkg/mathutil.go",
+          "id": "pkg/mathutil.go:Add",
+          "kind": "function",
+          "name": "Add",
+          "startLine": 7
+        },
+        {
+          "endLine": 15,
+          "filePath": "pkg/mathutil.go",
+          "id": "pkg/mathutil.go:Calculator",
+          "kind": "class",
+          "name": "Calculator",
+          "startLine": 12
+        },
+        {
+          "endLine": 21,
+          "filePath": "pkg/mathutil.go",
+          "id": "pkg/mathutil.go:Calculator.AddTo",
+          "kind": "method",
+          "name": "AddTo",
+          "startLine": 18
+        }
+      ]
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "rest-routes",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path",
+    "edge_order"
+  ],
+  "operation_id": "subgraph-default-depth"
+}

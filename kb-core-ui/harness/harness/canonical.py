@@ -75,6 +75,35 @@ def normalize_generated_id(value: Any, ctx: NormalizeContext) -> Any:
     return _walk_strings(value, lambda s: _GENERATED_ID_RE.sub(r"\1-<SLUG>-<NANOTS>", s))
 
 
+_EDGE_KEYS = {"source", "target", "kind"}
+
+
+@register("edge_order")
+def normalize_edge_order(value: Any, ctx: NormalizeContext) -> Any:
+    """Sorts graph.Edge arrays.
+
+    Store.Subgraph collects its result in a map[graph.Edge]bool and returns
+    it by ranging that map. Go randomizes map iteration order, so
+    /api/graph/subgraph serves the same edge *set* in a different order on
+    every call — Go disagrees with itself, not just with the port. Sorting is
+    declared per case (SPEC.md C4/V2), never globally: /api/graph reads its
+    edges straight out of SQLite and stays order-stable, so it must keep
+    failing on a real reordering.
+    """
+
+    def _walk(v: Any) -> Any:
+        if isinstance(v, dict):
+            return {k: _walk(x) for k, x in v.items()}
+        if isinstance(v, list):
+            items = [_walk(x) for x in v]
+            if items and all(isinstance(i, dict) and set(i) == _EDGE_KEYS for i in items):
+                items.sort(key=lambda e: (e["source"], e["target"], e["kind"]))
+            return items
+        return v
+
+    return _walk(value)
+
+
 @register("key_order")
 def normalize_key_order(value: Any, ctx: NormalizeContext) -> Any:
     if isinstance(value, dict):

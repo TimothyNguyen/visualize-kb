@@ -6,9 +6,10 @@
 /kb-core-ui.exe
 /dist/
 
-# Python (bots/)
+# Python (bots/, python/)
 __pycache__/
 *.pyc
+*.egg-info/
 
 # OS
 .DS_Store

@@ -87,3 +87,25 @@ def test_to_comparable_json_result():
 def test_to_comparable_unknown_capture_raises():
     with pytest.raises(ManifestError):
         to_comparable("not_a_capture", None)
+
+
+def _edge(source, target, kind):
+    return {"source": source, "target": target, "kind": kind}
+
+
+def test_edge_order_sorts_edge_arrays():
+    body = {
+        "center": "a.go:Add",
+        "edges": [_edge("a.go:B", "a.go:Add", "calls"), _edge("a.go:A", "a.go:Add", "contains")],
+        "nodes": [{"id": "a.go:Add"}],
+    }
+    out = canonicalize(body, ["edge_order"], _ctx())
+    assert [e["source"] for e in out["edges"]] == ["a.go:A", "a.go:B"]
+    # Non-edge arrays are untouched.
+    assert out["nodes"] == [{"id": "a.go:Add"}]
+    assert out["center"] == "a.go:Add"
+
+
+def test_edge_order_leaves_non_edge_dicts_alone():
+    body = {"rows": [{"source": "b", "target": "a"}, {"source": "a", "target": "b"}]}
+    assert canonicalize(body, ["edge_order"], _ctx()) == body

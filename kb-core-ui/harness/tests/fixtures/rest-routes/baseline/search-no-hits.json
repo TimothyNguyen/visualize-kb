@@ -1,0 +1,15 @@
+{
+  "captured_at": "2026-08-28T19:05:20.527644+00:00",
+  "comparable": {
+    "body": [],
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "rest-routes",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "search-no-hits"
+}
