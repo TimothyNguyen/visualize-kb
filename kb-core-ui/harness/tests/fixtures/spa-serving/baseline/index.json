@@ -1,8 +1,8 @@
 {
-  "captured_at": "2026-08-28T20:39:04.972608+00:00",
+  "captured_at": "2026-08-28T20:48:04.792976+00:00",
   "comparable": {
     "status": 200,
-    "text_body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>KB Core UI</title>\n    <script type=\"module\" crossorigin src=\"/assets/index-DLrcYNu3.js\"></script>\n    <link rel=\"stylesheet\" crossorigin href=\"/assets/index-DJIuUXvX.css\">\n  </head>\n  <body>\n    <div id=\"root\"></div>\n\n  </body>\n</html>\n"
+    "text_body": "<!doctype html>\n<html>\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>kb-core-ui</title>\n    <link rel=\"icon\" href=\"/favicon.svg\" />\n    <link rel=\"stylesheet\" href=\"/assets/app.css\" />\n    <script type=\"module\" src=\"/assets/app.js\"></script>\n  </head>\n  <body><div id=\"root\"></div></body>\n</html>\n"
   },
   "engine": "go",
   "fixture": "spa-serving",

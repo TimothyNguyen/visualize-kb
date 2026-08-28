@@ -8,7 +8,10 @@
       "method": "GET",
       "route": "/",
       "capture": "status_text_body",
-      "normalizers": ["line_endings", "fixture_root_path"]
+      "normalizers": [
+        "line_endings",
+        "fixture_root_path"
+      ]
     },
     {
       "id": "index-headers",
@@ -16,7 +19,9 @@
       "method": "GET",
       "route": "/",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "spa-fallback-deep-route",
@@ -24,23 +29,30 @@
       "method": "GET",
       "route": "/symbols/does-not-exist",
       "capture": "status_text_body",
-      "normalizers": ["line_endings", "fixture_root_path"]
+      "normalizers": [
+        "line_endings",
+        "fixture_root_path"
+      ]
     },
     {
       "id": "js-bundle-headers",
       "kind": "rest",
       "method": "GET",
-      "route": "/assets/index-DLrcYNu3.js",
+      "route": "/assets/app.js",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "css-bundle-headers",
       "kind": "rest",
       "method": "GET",
-      "route": "/assets/index-DJIuUXvX.css",
+      "route": "/assets/app.css",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "favicon-headers",
@@ -48,7 +60,9 @@
       "method": "GET",
       "route": "/favicon.svg",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "graph-json-headers",
@@ -56,7 +70,9 @@
       "method": "GET",
       "route": "/kb-core-out/graph.json",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "api-404-headers",
@@ -64,7 +80,9 @@
       "method": "GET",
       "route": "/api/files/symbols",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "api-error-headers",
@@ -72,7 +90,9 @@
       "method": "GET",
       "route": "/api/symbols/nope",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "api-ok-headers",
@@ -80,7 +100,9 @@
       "method": "GET",
       "route": "/api/stats",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "memory-list-headers",
@@ -88,7 +110,9 @@
       "method": "GET",
       "route": "/api/memory",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     },
     {
       "id": "bots-roster-headers",
@@ -96,7 +120,9 @@
       "method": "GET",
       "route": "/api/bots",
       "capture": "status_headers",
-      "normalizers": ["fixture_root_path"]
+      "normalizers": [
+        "fixture_root_path"
+      ]
     }
   ]
 }

@@ -44,6 +44,8 @@ V1. Same fixture plus same declared operation yields equivalent canonical Go and
 
 V2. Harness normalizes only declared nondeterminism: key order, line endings, fixture-root paths, timestamps, generated IDs, and Go map-iteration order.
 
+V12. `parity` compares two engines on one machine and is the CI gate. `verify` replays baselines against the platform that recorded them, so it is a local check, not a CI one.
+
 V3. Harness fails unknown output differences. No global ignore list.
 
 V4. Each oracle/candidate run gets separate temp root and SQLite database.
@@ -77,7 +79,8 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |T9|x|Port REST service. Run route parity cases against Go and Python.|V5,V8|
 |T10|x|Port MCP service. Run tool-list, schema, graph-tool, and memory-tool parity cases.|V5,V8|
 |T11|x|Run React against Python. Keep client types and visible flows compatible.|V9|
-|T12|.|Gate Python default-runtime switch on CI parity. Move Go module to `kb-core-ui/legacy/go/`; retain optional legacy oracle suite.|V10,V11|
+|T12|x|CI parity gate: root `.github/workflows/parity.yml` builds go oracle, runs go/port/harness tests, runs `parity --oracle go --candidate python`. Pin grammar versions.|V10|
+|T13|.|BLOCKED on T12 CI observed green (C7). Then: switch default runtime to Python; move go module → `kb-core-ui/legacy/go/` read-only; keep legacy oracle runnable for harness.|V10,V11|
 
 ## §B
 
@@ -95,3 +98,5 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |B10|2026-08-28|py `open()` on win sets errno only, `strerror` = POSIX `No such file or directory`; go `os.ReadFile` → `*os.PathError` w/ win32 text `open <p>: The system cannot find the file specified.` ∴ `read failed:` ≠|`errors.py::os_error_text` — recover winerror via `os.stat`, render w/ `ctypes.FormatError`; POSIX → lowercase 1st char (go errno table)|
 |B11|2026-08-28|py `server/app.py` had hardcoded content-type map; go `http.ServeFile` → `mime.TypeByExtension` reads win registry ∴ `.js` = `application/javascript` (go) ≠ `text/javascript; charset=utf-8` (py). Hardcoding ⊥ portable: stock linux table gives `text/javascript`|`mimetypes.guess_type` (reads same registry) + go `setExtensionType` rule: append `charset=utf-8` ∀ `text/*` w/o one|
 |B12|2026-08-28|go buffers handler body ≤2048B → sets `Content-Length`; >2048B → chunked ∴ `/api/bots` (2.7KB) ⊥ `Content-Length`, py always sets it|`Content-Length` ∉ `status_headers` capture: framing ⊥ contract, same bytes either way; comparing it pins port to go internal buffer size|
+|B13|2026-08-28|repo had ⊥ active CI: `kb-core-ui/.github/workflows/*` vestigial from when `kb-core-ui` was own repo; github reads `.github/` @ repo root only ∴ V10 gate ⊥ existed to gate on|new root `.github/workflows/parity.yml`. Old 2 left in place, inert, flagged|
+|B14|2026-08-28|`python/pyproject.toml` floored grammars (`tree-sitter-go>=0.25`) but parser output = contract (cf. B3) ∴ CI could install grammar ≠ one parity proven against → diff looks like port bug|pin exact: `tree-sitter==0.26.0`, `-go/-python/-javascript==0.25.0`, `-typescript==0.23.2`|

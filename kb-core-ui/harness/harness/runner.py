@@ -144,8 +144,16 @@ class ProcessRunner:
             work_dir=work_dir,
         )
 
+    # A fixed, committed stand-in for web/dist; see tests/webdir/README.md.
+    WEB_DIR = Path(__file__).resolve().parents[1] / "tests" / "webdir"
+
     def _base_values(self, ctx: RunContext) -> dict[str, str]:
-        return {"bin": self.engine.bin_path, "repo": str(ctx.fixture_root), "db": str(ctx.db_path)}
+        return {
+            "bin": self.engine.bin_path,
+            "repo": str(ctx.fixture_root),
+            "db": str(ctx.db_path),
+            "web_dir": str(self.WEB_DIR),
+        }
 
     def run_cli(self, ctx: RunContext, command: str, values: dict[str, str]) -> CliResult:
         template = self.engine.config.cli_templates.get(command)

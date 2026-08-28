@@ -66,11 +66,19 @@ GO_CLI_TEMPLATES: dict[str, list[str]] = {
     "memory_rm_absent": ["{bin}", "memory", "rm", "no-such-id", "--repo", "{repo}"],
 }
 
+# --web-dir is passed explicitly rather than left to each engine's
+# auto-detection. web/dist is a build artifact, absent from a fresh checkout,
+# so auto-detection would have both engines fall back to API-only and let the
+# spa-serving fixture agree on two 404s without testing anything. See
+# tests/webdir/README.md.
 GO_ENGINE = EngineConfig(
     name="go",
     resolve_bin=resolve_go_binary,
     cli_templates=GO_CLI_TEMPLATES,
-    serve_template=["{bin}", "serve", "{repo}", "--db", "{db}", "--port", "{port}", "--open=false"],
+    serve_template=[
+        "{bin}", "serve", "{repo}", "--db", "{db}", "--port", "{port}",
+        "--web-dir", "{web_dir}", "--open=false",
+    ],
     mcp_template=["{bin}", "mcp", "{repo}", "--db", "{db}"],
 )
 
@@ -101,7 +109,7 @@ PYTHON_ENGINE = EngineConfig(
     cli_templates=_python_templates(),
     serve_template=[
         "{bin}", "-m", "kb_core_ui", "serve", "{repo}",
-        "--db", "{db}", "--port", "{port}", "--open=false",
+        "--db", "{db}", "--port", "{port}", "--web-dir", "{web_dir}", "--open=false",
     ],
     mcp_template=["{bin}", "-m", "kb_core_ui", "mcp", "{repo}", "--db", "{db}"],
 )
