@@ -80,7 +80,7 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |T10|x|Port MCP service. Run tool-list, schema, graph-tool, and memory-tool parity cases.|V5,V8|
 |T11|x|Run React against Python. Keep client types and visible flows compatible.|V9|
 |T12|x|CI parity gate: root `.github/workflows/parity.yml` builds go oracle, runs go/port/harness tests, runs `parity --oracle go --candidate python`. Pin grammar versions.|V10|
-|T13|.|BLOCKED on T12 CI observed green (C7). Then: switch default runtime to Python; move go module → `kb-core-ui/legacy/go/` read-only; keep legacy oracle runnable for harness.|V10,V11|
+|T13|.|BLOCKED on T12 CI observed green (C7). Then: switch default runtime to Python; move go module → `kb-core-ui/legacy/go/` read-only; keep legacy oracle runnable for harness. Runbook: `T13-HANDOFF.md`.|V10,V11|
 
 ## §B
 
