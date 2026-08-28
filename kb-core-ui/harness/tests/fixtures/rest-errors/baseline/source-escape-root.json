@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:57.625157+00:00",
+  "comparable": {
+    "body": {
+      "error": "file path escapes repo root"
+    },
+    "status": 400
+  },
+  "engine": "go",
+  "fixture": "rest-errors",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "source-escape-root"
+}

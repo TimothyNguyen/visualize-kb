@@ -190,6 +190,70 @@ def test_load_manifest_invalid_fs_operation_raises(tmp_path: Path, fs_op: dict):
         )
 
 
+@pytest.mark.parametrize("capture", ["stdout_stderr_exit", "status_text_body"])
+def test_load_manifest_accepts_t1_capture_kinds(tmp_path: Path, capture: str):
+    path = _write_manifest(
+        tmp_path, [{"id": "a", "kind": "cli", "command": "help_root", "capture": capture}]
+    )
+    assert load_manifest(path).operations[0].capture == capture
+
+
+def test_load_manifest_parses_mcp_list_kind(tmp_path: Path):
+    path = _write_manifest(tmp_path, [{"id": "a", "kind": "mcp_list", "capture": "json_result"}])
+    assert load_manifest(path).operations[0].kind == "mcp_list"
+
+
+def test_load_manifest_parses_raw_body_on_rest(tmp_path: Path):
+    path = _write_manifest(
+        tmp_path,
+        [{"id": "a", "kind": "rest", "method": "POST", "route": "/api/memory", "raw_body": "{not json"}],
+    )
+    assert load_manifest(path).operations[0].raw_body == "{not json"
+
+
+def test_load_manifest_raw_body_with_params_raises(tmp_path: Path):
+    with pytest.raises(ManifestError):
+        load_manifest(
+            _write_manifest(
+                tmp_path,
+                [
+                    {
+                        "id": "a",
+                        "kind": "rest",
+                        "method": "POST",
+                        "route": "/api/memory",
+                        "raw_body": "{not json",
+                        "params": {"kind": "rule"},
+                    }
+                ],
+            )
+        )
+
+
+def test_load_manifest_raw_body_on_non_rest_raises(tmp_path: Path):
+    with pytest.raises(ManifestError):
+        load_manifest(
+            _write_manifest(tmp_path, [{"id": "a", "kind": "cli", "command": "parse", "raw_body": "x"}])
+        )
+
+
+def test_load_manifest_parses_expect_error_on_mcp(tmp_path: Path):
+    path = _write_manifest(
+        tmp_path, [{"id": "a", "kind": "mcp", "tool": "get_symbol", "expect_error": True}]
+    )
+    assert load_manifest(path).operations[0].expect_error is True
+
+
+def test_load_manifest_expect_error_on_non_mcp_raises(tmp_path: Path):
+    with pytest.raises(ManifestError):
+        load_manifest(
+            _write_manifest(
+                tmp_path,
+                [{"id": "a", "kind": "rest", "method": "GET", "route": "/x", "expect_error": True}],
+            )
+        )
+
+
 def test_discover_fixtures_finds_smoke_fixture():
     fixtures_dir = Path(__file__).resolve().parent / "fixtures"
     fixtures = discover_fixtures(fixtures_dir)

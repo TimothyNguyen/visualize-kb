@@ -78,6 +78,14 @@ class McpSession:
         self._write_message({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
         return result
 
+    def list_tools(self) -> Any:
+        return self._call("tools/list", {})
+
+    def call_tool_result(self, name: str, arguments: dict) -> Any:
+        """Returns the raw tools/call result, including isError, so error
+        results can be baselined instead of raising like call_tool does."""
+        return self._call("tools/call", {"name": name, "arguments": arguments})
+
     def call_tool(self, name: str, arguments: dict) -> Any:
         result = self._call("tools/call", {"name": name, "arguments": arguments})
         if result.get("isError"):
@@ -116,6 +124,9 @@ def start_mcp_process(argv: list[str], cwd: Path) -> McpSession:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        # JSON-RPC is UTF-8 by spec; text mode would otherwise decode with the
+        # OS locale (cp1252 on Windows) and mangle non-ASCII tool descriptions.
+        encoding="utf-8",
         bufsize=1,
     )
     return McpSession(proc)

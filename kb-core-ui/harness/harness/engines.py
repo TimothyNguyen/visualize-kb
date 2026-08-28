@@ -53,6 +53,16 @@ GO_CLI_TEMPLATES: dict[str, list[str]] = {
     "memory_list": ["{bin}", "memory", "list", "--repo", "{repo}"],
     "memory_search": ["{bin}", "memory", "search", "{query}", "--repo", "{repo}", "--top", "{top}"],
     "memory_rm": ["{bin}", "memory", "rm", "{id}", "--repo", "{repo}"],
+    # T1 surface templates: help text, usage errors, and exit codes.
+    "help_root": ["{bin}", "--help"],
+    "no_args": ["{bin}"],
+    "help_parse": ["{bin}", "parse", "--help"],
+    "help_memory": ["{bin}", "memory", "--help"],
+    "unknown_command": ["{bin}", "bogus"],
+    "parse_missing_repo": ["{bin}", "parse", "{repo}/does-not-exist", "--db", "{db}"],
+    "parse_too_many_args": ["{bin}", "parse", "{repo}", "{repo}"],
+    "memory_add_no_title": ["{bin}", "memory", "add", "--repo", "{repo}"],
+    "memory_rm_absent": ["{bin}", "memory", "rm", "no-such-id", "--repo", "{repo}"],
 }
 
 GO_ENGINE = EngineConfig(

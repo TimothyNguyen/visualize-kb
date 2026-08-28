@@ -1,0 +1,48 @@
+{
+  "name": "mcp-surface",
+  "repo": "repo",
+  "operations": [
+    {
+      "id": "tools-list",
+      "kind": "mcp_list",
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-symbol-not-found",
+      "kind": "mcp",
+      "tool": "get_symbol",
+      "params": {"id": "nope"},
+      "expect_error": true,
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "file-slice-bad-range",
+      "kind": "mcp",
+      "tool": "get_file_slice",
+      "params": {"file": "hello.go", "start": 5, "end": 1},
+      "expect_error": true,
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "file-slice-escape-root",
+      "kind": "mcp",
+      "tool": "get_file_slice",
+      "params": {"file": "../../etc/passwd", "start": 1, "end": 2},
+      "expect_error": true,
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-add-invalid-kind",
+      "kind": "mcp",
+      "tool": "memory_add",
+      "params": {"kind": "bogus", "title": "t", "text": "x"},
+      "expect_error": true,
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    }
+  ]
+}

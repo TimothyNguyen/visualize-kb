@@ -7,8 +7,14 @@ from pathlib import Path
 from harness.canonical import NORMALIZERS
 from harness.errors import ManifestError
 
-_VALID_KINDS = {"cli", "rest", "mcp", "fs"}
-_VALID_CAPTURES = {"stdout_exit", "json_body_status", "json_result"}
+_VALID_KINDS = {"cli", "rest", "mcp", "mcp_list", "fs"}
+_VALID_CAPTURES = {
+    "stdout_exit",
+    "stdout_stderr_exit",
+    "json_body_status",
+    "status_text_body",
+    "json_result",
+}
 _VALID_FS_OPS = {"replace", "delete"}
 
 
@@ -21,7 +27,9 @@ class Operation:
     method: str | None = None
     route: str | None = None
     params: dict[str, str] = field(default_factory=dict)
+    raw_body: str | None = None
     tool: str | None = None
+    expect_error: bool = False
     fs_op: str | None = None
     path: str | None = None
     find: str | None = None
@@ -55,6 +63,19 @@ def _parse_operation(raw: dict, manifest_path: Path, in_setup: bool = False) -> 
         raise ManifestError(f"{manifest_path}: rest operation {op_id!r} missing 'method'/'route'")
     if kind == "mcp" and not raw.get("tool"):
         raise ManifestError(f"{manifest_path}: mcp operation {op_id!r} missing 'tool'")
+    if raw.get("raw_body") is not None:
+        if kind != "rest":
+            raise ManifestError(
+                f"{manifest_path}: operation {op_id!r} sets 'raw_body' on a non-rest operation"
+            )
+        if raw.get("params"):
+            raise ManifestError(
+                f"{manifest_path}: rest operation {op_id!r} sets both 'raw_body' and 'params'"
+            )
+    if raw.get("expect_error") and kind != "mcp":
+        raise ManifestError(
+            f"{manifest_path}: operation {op_id!r} sets 'expect_error' on a non-mcp operation"
+        )
     if kind == "fs":
         if not in_setup:
             raise ManifestError(
@@ -99,7 +120,9 @@ def _parse_operation(raw: dict, manifest_path: Path, in_setup: bool = False) -> 
         method=raw.get("method"),
         route=raw.get("route"),
         params=raw.get("params", {}),
+        raw_body=raw.get("raw_body"),
         tool=raw.get("tool"),
+        expect_error=bool(raw.get("expect_error", False)),
         fs_op=raw.get("fs_op"),
         path=raw.get("path"),
         find=raw.get("find"),

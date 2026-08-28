@@ -66,7 +66,7 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 
 |id|status|task|cites|
 |---|---|---|---|
-|T1|.|Capture Go CLI help, REST, MCP `tools/list`, graph JSON, and error baseline fixtures.|V1,V5|
+|T1|x|Capture Go CLI help, REST, MCP `tools/list`, graph JSON, and error baseline fixtures.|V1,V5|
 |T2|x|Create fixture repositories for Go, Python, TypeScript, mixed-language, malformed, changed, and deleted-file cases.|V1,V6,V7|
 |T3|x|Build canonicalizer and structured JSON diff reporter with per-case normalizer allowlist.|V2,V3|
 |T4|x|Build dual-process harness: `record`, `parity`, `verify`, `report`; isolated temp roots and databases.|V1,V4|
@@ -83,3 +83,5 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 
 |id|date|cause|fix|
 |---|---|---|---|
+|B1|2026-08-28|harness subprocess `text=True` w/o `encoding` → child stdout decoded via OS locale (cp1252 on win). Go emits UTF-8 ∴ `—` baselined as mojibake `â€”`|`encoding="utf-8"` on all child procs in `runner.py` + `mcp_client.py`|
+|B2|2026-08-28|CLI capture was `stdout_exit` only, but Cobra `cmd.Print*` → `OutOrStderr()` = stderr ∴ ∀ CLI baseline recorded `stdout: ""`|new capture `stdout_stderr_exit`|

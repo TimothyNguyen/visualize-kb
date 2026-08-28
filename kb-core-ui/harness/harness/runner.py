@@ -87,6 +87,16 @@ class RestSession:
         data = json.dumps(json_body).encode("utf-8")
         return self._request(self.base_url + route, "POST", data=data, headers={"Content-Type": "application/json"})
 
+    def post_raw(self, route: str, body_text: str) -> RestResult:
+        """Sends body_text verbatim, so a manifest can exercise malformed-JSON
+        error paths that post() would json-encode away."""
+        return self._request(
+            self.base_url + route,
+            "POST",
+            data=body_text.encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+
     def delete(self, route: str) -> RestResult:
         return self._request(self.base_url + route, "DELETE")
 
@@ -137,7 +147,12 @@ class ProcessRunner:
         start = time.monotonic()
         try:
             proc = subprocess.run(
-                argv, cwd=ctx.fixture_root, capture_output=True, text=True, timeout=self.timeout_s
+                argv,
+                cwd=ctx.fixture_root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=self.timeout_s,
             )
         except subprocess.TimeoutExpired as exc:
             raise EngineError(f"cli command {command!r} timed out after {self.timeout_s}s: {argv}") from exc
@@ -156,7 +171,12 @@ class ProcessRunner:
         merged = {**self._base_values(ctx), "port": str(ctx.port), **values}
         argv = render_argv(config.serve_template, merged)
         proc = subprocess.Popen(
-            argv, cwd=ctx.fixture_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            argv,
+            cwd=ctx.fixture_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
         )
         base_url = f"http://127.0.0.1:{ctx.port}"
         try:

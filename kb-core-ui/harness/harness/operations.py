@@ -69,6 +69,8 @@ def execute_operation(
         if method == "GET":
             return rest.get(op.route, op.params or None)
         if method == "POST":
+            if op.raw_body is not None:
+                return rest.post_raw(op.route, op.raw_body)
             return rest.post(op.route, op.params)
         if method == "DELETE":
             return rest.delete(op.route)
@@ -76,7 +78,12 @@ def execute_operation(
 
     if op.kind == "mcp":
         mcp = sessions.mcp()
+        if op.expect_error:
+            return mcp.call_tool_result(op.tool, op.params)
         return mcp.call_tool(op.tool, op.params)
+
+    if op.kind == "mcp_list":
+        return sessions.mcp().list_tools()
 
     if op.kind == "fs":
         target = ctx.fixture_root / op.path

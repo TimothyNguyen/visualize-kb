@@ -99,8 +99,12 @@ def canonical_dumps(value: Any) -> str:
 def to_comparable(capture: str, raw: Any) -> dict[str, Any]:
     if capture == "stdout_exit":
         return {"exit_code": raw.exit_code, "stdout": raw.stdout}
+    if capture == "stdout_stderr_exit":
+        return {"exit_code": raw.exit_code, "stdout": raw.stdout, "stderr": raw.stderr}
     if capture == "json_body_status":
         return {"status": raw.status, "body": raw.json_body}
+    if capture == "status_text_body":
+        return {"status": raw.status, "text_body": raw.text_body}
     if capture == "json_result":
         return {"result": raw}
     raise ManifestError(f"unknown capture kind {capture!r}")
