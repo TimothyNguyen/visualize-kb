@@ -1,0 +1,33 @@
+{
+  "captured_at": "2026-08-28T19:54:49.491551+00:00",
+  "comparable": {
+    "result": {
+      "children": [
+        {
+          "children": [
+            {
+              "language": "go",
+              "name": "mathutil.go",
+              "path": "pkg/mathutil.go",
+              "type": "file"
+            }
+          ],
+          "name": "pkg",
+          "path": "pkg",
+          "type": "dir"
+        }
+      ],
+      "name": "",
+      "path": "",
+      "type": "dir"
+    }
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "get-tree"
+}

@@ -29,6 +29,8 @@ from kb_core_ui.config import (
 from kb_core_ui.bots import Runner as BotRunner
 from kb_core_ui.errors import KbError
 from kb_core_ui.indexer import index
+from kb_core_ui.mcp import Server as McpServer
+from kb_core_ui.mcp import serve_stdio
 from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
 from kb_core_ui.server import Server, listen_and_serve
@@ -478,6 +480,29 @@ def _new_serve_cmd() -> Command:
     )
 
 
+def _run_mcp(cmd: Command, values: dict, args: list[str]) -> None:
+    # stdio IS the MCP transport — nothing but the protocol may touch stdout.
+    # Command.printf already writes to stderr, which is the same redirect Go
+    # makes with cmd.SetOut(os.Stderr).
+    repo_root = resolve_repo_path(args)
+    store = open_store_and_index(cmd, repo_root, values["db"])
+    memory = None
+    try:
+        # Memory is best-effort: if it cannot open, the graph tools still
+        # serve and the memory_* tools are simply absent.
+        try:
+            memory = open_memory(repo_root)
+        except KbError as exc:
+            cmd.printf(f"memory unavailable ({exc}) — serving graph tools only\n")
+            memory = None
+
+        serve_stdio(McpServer(store, repo_root, memory).handlers())
+    finally:
+        if memory is not None:
+            memory.close()
+        store.close()
+
+
 def _new_mcp_cmd() -> Command:
     return Command(
         use="mcp [path]",
@@ -485,7 +510,7 @@ def _new_mcp_cmd() -> Command:
         long=MCP_LONG,
         args=maximum_n_args(1),
         flags=[Flag("db", "string", "", _DB_FLAG_USAGE)],
-        run=_pending("T10"),
+        run=_run_mcp,
     )
 
 

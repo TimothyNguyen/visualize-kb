@@ -1,0 +1,154 @@
+{
+  "name": "mcp-tools",
+  "repo": "repo",
+  "operations": [
+    {
+      "id": "search-symbol",
+      "kind": "mcp",
+      "tool": "search_symbol",
+      "params": {"query": "Add"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "search-symbol-by-kind",
+      "kind": "mcp",
+      "tool": "search_symbol",
+      "params": {"query": "a", "kind": "method"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "search-symbol-no-hits",
+      "kind": "mcp",
+      "tool": "search_symbol",
+      "params": {"query": "zzzznope"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-symbol",
+      "kind": "mcp",
+      "tool": "get_symbol",
+      "params": {"id": "pkg/mathutil.go:Add"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-file-symbols",
+      "kind": "mcp",
+      "tool": "get_file_symbols",
+      "params": {"path": "pkg/mathutil.go"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-file-symbols-unknown",
+      "kind": "mcp",
+      "tool": "get_file_symbols",
+      "params": {"path": "nope.go"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-callees",
+      "kind": "mcp",
+      "tool": "get_callees",
+      "params": {"id": "pkg/mathutil.go:Calculator.AddTo"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-callees-empty",
+      "kind": "mcp",
+      "tool": "get_callees",
+      "params": {"id": "pkg/mathutil.go:Calculator.Reset"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-callers",
+      "kind": "mcp",
+      "tool": "get_callers",
+      "params": {"id": "pkg/mathutil.go:Add"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-file-slice",
+      "kind": "mcp",
+      "tool": "get_file_slice",
+      "params": {"file": "pkg/mathutil.go", "start": 6, "end": 9},
+      "capture": "json_result",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "get-file-slice-end-past-eof",
+      "kind": "mcp",
+      "tool": "get_file_slice",
+      "params": {"file": "pkg/mathutil.go", "start": 20, "end": 9999},
+      "capture": "json_result",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "get-file-slice-start-past-eof",
+      "kind": "mcp",
+      "tool": "get_file_slice",
+      "params": {"file": "pkg/mathutil.go", "start": 9998, "end": 9999},
+      "capture": "json_result",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "get-file-slice-missing-file",
+      "kind": "mcp",
+      "tool": "get_file_slice",
+      "params": {"file": "nope.go", "start": 1, "end": 2},
+      "expect_error": true,
+      "capture": "json_result",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "get-tree",
+      "kind": "mcp",
+      "tool": "get_tree",
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "get-stats",
+      "kind": "mcp",
+      "tool": "get_stats",
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-add",
+      "kind": "mcp",
+      "tool": "memory_add",
+      "params": {
+        "kind": "rule",
+        "title": "mcp tool rule",
+        "text": "trace the graph instead of reading whole files",
+        "source": "harness"
+      },
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path", "generated_id", "timestamp"]
+    },
+    {
+      "id": "memory-search",
+      "kind": "mcp",
+      "tool": "memory_search",
+      "params": {"query": "should I read the whole file"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path", "generated_id", "timestamp"]
+    },
+    {
+      "id": "memory-search-kind-filter",
+      "kind": "mcp",
+      "tool": "memory_search",
+      "params": {"query": "should I read the whole file", "kind": "lesson"},
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path", "generated_id", "timestamp"]
+    }
+  ]
+}

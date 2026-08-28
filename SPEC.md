@@ -75,7 +75,7 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |T7|x|Port graph builder, code indexer, SQLite code store, migrations, and incremental index behavior.|V7,V8|
 |T8|x|Port memory store, embedding interface, CRUD/search behavior, and bot runner behavior.|V5,V8|
 |T9|x|Port REST service. Run route parity cases against Go and Python.|V5,V8|
-|T10|.|Port MCP service. Run tool-list, schema, graph-tool, and memory-tool parity cases.|V5,V8|
+|T10|x|Port MCP service. Run tool-list, schema, graph-tool, and memory-tool parity cases.|V5,V8|
 |T11|.|Run React against Python. Keep client types and visible flows compatible.|V9|
 |T12|.|Gate Python default-runtime switch on CI parity. Move Go module to `kb-core-ui/legacy/go/`; retain optional legacy oracle suite.|V10,V11|
 
@@ -90,3 +90,6 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |B5|2026-08-28|py `sqlite3.connect` defaults `check_same_thread=True`; `serve` dispatches ∀ req on own thread ∴ ∀ REST call → 500, empty body|`check_same_thread=False` on both stores + RLock ∀ dispatch in `server/app.py` (go `*sql.DB` = pool)|
 |B6|2026-08-28|go `Store.Subgraph` builds edges by ranging `map[graph.Edge]bool`; go randomizes map iter ∴ `/api/graph/subgraph` edge order ⊥ stable, go ≠ go|new per-case normalizer `edge_order`, declared on subgraph cases only. `/api/graph` reads edges from SQLite ∴ stays unnormalized (V3)|
 |B7|2026-08-28|`verify` ran ∀ op in own RunContext, but `record`/`parity` share 1 ctx ∀ fixture ∴ stateful op (POST `/api/memory` → GET `/api/memory`) compared vs ≠ preconditions → false FAIL|`verify` replays whole fixture in 1 ctx per engine, diffs only ops w/ baseline for that engine|
+|B8|2026-08-28|`internal/mcp` marshals store slices direct; empty go slice built by append = nil → `null`. REST wraps same calls in `nonNil()` → `[]` ∴ 2 surfaces ≠ on empty case by design|`_marshal_list` → `None` when empty, MCP only|
+|B9|2026-08-28|`store.Stats` ⊥ json tags ∴ `encoding/json` emits go field names: MCP `get_stats` → `Files/Symbols/Edges/Languages`. REST `/api/stats` builds own lowercase map ∴ ≠|MCP `get_stats` emits capitalized keys|
+|B10|2026-08-28|py `open()` on win sets errno only, `strerror` = POSIX `No such file or directory`; go `os.ReadFile` → `*os.PathError` w/ win32 text `open <p>: The system cannot find the file specified.` ∴ `read failed:` ≠|`errors.py::os_error_text` — recover winerror via `os.stat`, render w/ `ctypes.FormatError`; POSIX → lowercase 1st char (go errno table)|
