@@ -26,6 +26,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: kb-core-ui/go.mod
+          cache-dependency-path: kb-core-ui/go.sum
 
       - uses: actions/setup-python@v5
         with:
@@ -37,7 +38,13 @@ jobs:
 
       - name: Test the Go oracle
         # Parity is only meaningful if the oracle itself is sound.
-        run: go test ./...
+        #
+        # Scoped to the real packages rather than ./... : the harness fixture
+        # repos live inside this module, and harness/tests/fixtures/malformed
+        # holds Go that does not compile on purpose -- it is the fixture that
+        # proves the parser survives a broken file. ./... would try to build it
+        # and fail the job on a file whose whole job is to be broken.
+        run: go test ./cmd/... ./internal/...
 
       - name: Install the Python port and the harness
         run: |
