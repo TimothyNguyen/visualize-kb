@@ -262,7 +262,7 @@ def run_bot_script(script_name: str, bots_dir: str, py_args: list[str]) -> None:
         script.stat()
     except OSError as exc:
         raise KbError(f"bot script not found at {script}: {exc.strerror}") from None
-    code = subprocess.call(["python3", str(script), *py_args])
+    code = subprocess.call([sys.executable, str(script), *py_args])
     if code != 0:
         raise SystemExit(code)
 
@@ -449,11 +449,12 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
             memory = None
 
         srv = Server(store, repo_root, web_dir, runner, memory)
-        url = f"http://localhost:{values['port']}"
+        display_host = "localhost" if values["host"] in ("127.0.0.1", "localhost") else values["host"]
+        url = f"http://{display_host}:{values['port']}"
         cmd.printf(f"kb-core-ui serving {url}\n")
         if values["open"]:
             open_browser(url)
-        listen_and_serve("localhost", values["port"], srv)
+        listen_and_serve(values["host"], values["port"], srv)
     finally:
         if memory is not None:
             memory.close()
@@ -474,6 +475,7 @@ def _new_serve_cmd() -> Command:
                 "path to the built web UI (web/dist); auto-detected if omitted",
             ),
             Flag("port", "int", 8420, "port to listen on"),
+            Flag("host", "string", "127.0.0.1", "host/interface to bind"),
             Flag("open", "bool", True, "open the web UI in a browser on start"),
         ],
         run=_run_serve,

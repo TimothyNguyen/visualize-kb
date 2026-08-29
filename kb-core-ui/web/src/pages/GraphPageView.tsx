@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import type { Edge, GraphResponse, SubgraphResponse, SymbolRef } from "../api/types"
-import { getGraph, getSubgraph, search } from "../api/client"
+import { getGraph, getGraphOverview, getSubgraph, search } from "../api/client"
 import { GlobalGraph } from "../components/GlobalGraph/GlobalGraph"
 import "./GraphPageView.css"
 
@@ -15,6 +15,7 @@ export function GraphPageView() {
   const [center, setCenter] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [overview, setOverview] = useState(false)
 
   const [query, setQuery] = useState(focusSymbol)
   const [suggestions, setSuggestions] = useState<SymbolRef[]>([])
@@ -32,11 +33,12 @@ export function GraphPageView() {
         setEdges(res.edges)
         setCenter(res.center)
       } else {
-        const res: GraphResponse = await getGraph()
+        const res: GraphResponse = await getGraphOverview()
         if (cancelled) return
         setNodes(res.nodes)
         setEdges(res.edges)
         setCenter(undefined)
+        setOverview(true)
       }
     }
 
@@ -51,6 +53,21 @@ export function GraphPageView() {
       cancelled = true
     }
   }, [focusSymbol, depth])
+
+  async function loadFullGraph() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await getGraph()
+      setNodes(res.nodes)
+      setEdges(res.edges)
+      setOverview(false)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "failed to load graph")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!query || query === focusSymbol) {
@@ -111,6 +128,11 @@ export function GraphPageView() {
               Show full graph
             </button>
           </>
+        )}
+        {!focusSymbol && overview && (
+          <button type="button" className="graph-load-full" onClick={loadFullGraph}>
+            Load full graph
+          </button>
         )}
       </div>
 
