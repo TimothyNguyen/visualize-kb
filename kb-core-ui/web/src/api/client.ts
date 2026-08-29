@@ -30,10 +30,13 @@ type KbCoreNode = {
 
 type KbCoreEdge = { source: string; target: string; relation?: string }
 type KbCoreGraph = { nodes: KbCoreNode[]; edges: KbCoreEdge[] }
+type KbCoreGraphFile = { nodes?: KbCoreNode[]; edges?: KbCoreEdge[]; links?: KbCoreEdge[] }
 
 const GRAPH_URL = import.meta.env.VITE_KB_CORE_GRAPH_URL || "/kb-core-out/graph.json"
+const GRAPH_OVERVIEW_URL = import.meta.env.VITE_KB_CORE_GRAPH_OVERVIEW_URL || "/kb-core-out/graph-overview.json"
 const SERVICE_API_BASE = import.meta.env.VITE_KB_CORE_UI_API_URL || "/api"
 let graphPromise: Promise<KbCoreGraph> | undefined
+let overviewPromise: Promise<KbCoreGraph> | undefined
 
 export class ApiRequestError extends Error {
   status: number
@@ -53,13 +56,40 @@ function loadGraph(): Promise<KbCoreGraph> {
         `Could not load KB Core graph at ${GRAPH_URL}. Run kb-core extract, then copy kb-core-out/graph.json into public/kb-core-out/.`,
       )
     }
-    const graph = (await res.json()) as KbCoreGraph
+    const raw = (await res.json()) as KbCoreGraphFile
+    // NetworkX's node-link exporter calls this array "links". Older KB Core
+    // consumers use "edges", so accept both and normalize at this boundary.
+    const graph: KbCoreGraph = {
+      nodes: raw.nodes ?? [],
+      edges: raw.edges ?? raw.links ?? [],
+    }
     if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
       throw new ApiRequestError(422, "KB Core graph.json has an invalid shape")
     }
     return graph
   })
   return graphPromise
+}
+
+function parseGraphResponse(res: Response): Promise<KbCoreGraph> {
+  return res.json().then((raw: KbCoreGraphFile) => {
+    const graph: KbCoreGraph = {
+      nodes: raw.nodes ?? [],
+      edges: raw.edges ?? raw.links ?? [],
+    }
+    if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+      throw new ApiRequestError(422, "KB Core graph.json has an invalid shape")
+    }
+    return graph
+  })
+}
+
+function loadOverview(): Promise<KbCoreGraph> {
+  overviewPromise ??= fetch(GRAPH_OVERVIEW_URL).then(async (res) => {
+    if (!res.ok) return loadGraph()
+    return parseGraphResponse(res)
+  })
+  return overviewPromise
 }
 
 function lineNumber(location?: string): number {
@@ -116,6 +146,11 @@ function byId(graph: KbCoreGraph): Map<string, KbCoreNode> {
 
 export async function getGraph(): Promise<GraphResponse> {
   const graph = await loadGraph()
+  return { nodes: graph.nodes.map(toRef), edges: graph.edges.map(toEdge) }
+}
+
+export async function getGraphOverview(): Promise<GraphResponse> {
+  const graph = await loadOverview()
   return { nodes: graph.nodes.map(toRef), edges: graph.edges.map(toEdge) }
 }
 

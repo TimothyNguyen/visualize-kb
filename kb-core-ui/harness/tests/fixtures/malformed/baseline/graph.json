@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-08-28T00:32:54.979814+00:00",
+  "comparable": {
+    "body": {
+      "edges": [],
+      "nodes": [
+        {
+          "endLine": 5,
+          "filePath": "broken.go",
+          "id": "broken.go:Oops",
+          "kind": "function",
+          "name": "Oops",
+          "startLine": 3
+        },
+        {
+          "endLine": 6,
+          "filePath": "valid.go",
+          "id": "valid.go:Ok",
+          "kind": "function",
+          "name": "Ok",
+          "startLine": 4
+        }
+      ]
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "malformed",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "graph"
+}

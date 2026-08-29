@@ -1,0 +1,48 @@
+{
+  "captured_at": "2026-08-28T00:32:59.653350+00:00",
+  "comparable": {
+    "body": [
+      {
+        "endLine": 2,
+        "filePath": "mathutil.ts",
+        "id": "mathutil.ts:DEFAULT_START",
+        "kind": "const",
+        "name": "DEFAULT_START",
+        "startLine": 2
+      },
+      {
+        "endLine": 7,
+        "filePath": "mathutil.ts",
+        "id": "mathutil.ts:add",
+        "kind": "function",
+        "name": "add",
+        "startLine": 5
+      },
+      {
+        "endLine": 12,
+        "filePath": "mathutil.ts",
+        "id": "mathutil.ts:Adder",
+        "kind": "interface",
+        "name": "Adder",
+        "startLine": 10
+      },
+      {
+        "endLine": 22,
+        "filePath": "mathutil.ts",
+        "id": "mathutil.ts:Calculator",
+        "kind": "class",
+        "name": "Calculator",
+        "startLine": 15
+      }
+    ],
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "typescript-basics",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "file-symbols"
+}

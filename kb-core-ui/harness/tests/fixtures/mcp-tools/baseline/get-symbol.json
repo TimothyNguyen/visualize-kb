@@ -1,0 +1,40 @@
+{
+  "captured_at": "2026-08-28T19:54:49.430070+00:00",
+  "comparable": {
+    "result": {
+      "doc": "Add returns the sum of two integers.",
+      "endLine": 9,
+      "filePath": "pkg/mathutil.go",
+      "id": "pkg/mathutil.go:Add",
+      "kind": "function",
+      "language": "go",
+      "name": "Add",
+      "params": [
+        {
+          "name": "a",
+          "type": "int"
+        },
+        {
+          "name": "b",
+          "type": "int"
+        }
+      ],
+      "returns": [
+        {
+          "name": "",
+          "type": "int"
+        }
+      ],
+      "signature": "func Add(a, b int) int",
+      "startLine": 7
+    }
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "get-symbol"
+}

@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-08-28T19:05:20.816774+00:00",
+  "comparable": {
+    "body": [
+      {
+        "createdAt": "<TIMESTAMP>",
+        "id": "rule-<SLUG>-<NANOTS>",
+        "kind": "rule",
+        "source": "harness",
+        "text": "the graph answers where code lives",
+        "title": "rest route rule"
+      }
+    ],
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "rest-routes",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path",
+    "generated_id",
+    "timestamp"
+  ],
+  "operation_id": "memory-list"
+}

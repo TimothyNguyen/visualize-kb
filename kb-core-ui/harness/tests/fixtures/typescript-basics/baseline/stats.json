@@ -1,0 +1,22 @@
+{
+  "captured_at": "2026-08-28T00:32:59.685237+00:00",
+  "comparable": {
+    "body": {
+      "edges": 4,
+      "files": 1,
+      "languages": {
+        "typescript": 1
+      },
+      "symbols": 7
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "typescript-basics",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "stats"
+}

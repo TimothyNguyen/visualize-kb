@@ -1,0 +1,22 @@
+{
+  "captured_at": "2026-08-28T00:32:56.825851+00:00",
+  "comparable": {
+    "body": {
+      "edges": 3,
+      "files": 1,
+      "languages": {
+        "python": 1
+      },
+      "symbols": 5
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "python-basics",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "stats"
+}

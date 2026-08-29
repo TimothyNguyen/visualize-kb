@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-08-28T01:34:57.533568+00:00",
+  "comparable": {
+    "status": 404,
+    "text_body": "404 page not found\n"
+  },
+  "engine": "go",
+  "fixture": "rest-errors",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "api-mux-not-found"
+}

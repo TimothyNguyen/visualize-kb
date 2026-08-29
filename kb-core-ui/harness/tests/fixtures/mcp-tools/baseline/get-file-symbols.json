@@ -1,0 +1,39 @@
+{
+  "captured_at": "2026-08-28T19:54:49.436164+00:00",
+  "comparable": {
+    "result": [
+      {
+        "endLine": 4,
+        "filePath": "pkg/mathutil.go",
+        "id": "pkg/mathutil.go:DefaultStart",
+        "kind": "const",
+        "name": "DefaultStart",
+        "startLine": 4
+      },
+      {
+        "endLine": 9,
+        "filePath": "pkg/mathutil.go",
+        "id": "pkg/mathutil.go:Add",
+        "kind": "function",
+        "name": "Add",
+        "startLine": 7
+      },
+      {
+        "endLine": 15,
+        "filePath": "pkg/mathutil.go",
+        "id": "pkg/mathutil.go:Calculator",
+        "kind": "class",
+        "name": "Calculator",
+        "startLine": 12
+      }
+    ]
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "get-file-symbols"
+}

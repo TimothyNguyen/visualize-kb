@@ -1,0 +1,30 @@
+{
+  "name": "typescript-basics",
+  "repo": "repo",
+  "operations": [
+    {
+      "id": "file-symbols",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/files/mathutil.ts/symbols",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "graph",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/graph",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "stats",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/stats",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "captured_at": "2026-08-28T19:54:49.415976+00:00",
+  "comparable": {
+    "result": [
+      {
+        "endLine": 21,
+        "filePath": "pkg/mathutil.go",
+        "id": "pkg/mathutil.go:Calculator.AddTo",
+        "kind": "method",
+        "name": "AddTo",
+        "startLine": 18
+      }
+    ]
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "search-symbol-by-kind"
+}

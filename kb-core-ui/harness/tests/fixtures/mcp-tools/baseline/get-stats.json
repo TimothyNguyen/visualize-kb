@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-08-28T19:54:49.499820+00:00",
+  "comparable": {
+    "result": {
+      "Edges": 3,
+      "Files": 1,
+      "Languages": {
+        "go": 1
+      },
+      "Symbols": 5
+    }
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "get-stats"
+}

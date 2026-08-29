@@ -1,0 +1,216 @@
+{
+  "name": "rest-routes",
+  "repo": "repo",
+  "operations": [
+    {
+      "id": "tree",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/tree",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "search-by-name",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/search",
+      "params": {"q": "Add"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "search-by-kind",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/search",
+      "params": {"q": "a", "kind": "method"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "search-no-hits",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/search",
+      "params": {"q": "zzzznope"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "source-slice",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/source",
+      "params": {"file": "pkg/mathutil.go", "start": "6", "end": "9"},
+      "capture": "json_body_status",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "source-end-past-eof",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/source",
+      "params": {"file": "pkg/mathutil.go", "start": "20", "end": "9999"},
+      "capture": "json_body_status",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "source-start-past-eof",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/source",
+      "params": {"file": "pkg/mathutil.go", "start": "9998", "end": "9999"},
+      "capture": "json_body_status",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "symbol-by-id",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/symbols/pkg%2Fmathutil.go:Add",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "symbol-members",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/symbols/pkg%2Fmathutil.go:Calculator/members",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "symbol-calls",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/symbols/pkg%2Fmathutil.go:Calculator.AddTo/calls",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "symbol-callers",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/symbols/pkg%2Fmathutil.go:Add/callers",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "symbol-calls-empty",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/symbols/pkg%2Fmathutil.go:Calculator.Reset/calls",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "symbol-unknown-suffix",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/symbols/pkg%2Fmathutil.go:Add/bogus",
+      "capture": "status_text_body",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "subgraph-depth-1",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/graph/subgraph",
+      "params": {"symbol": "pkg/mathutil.go:Calculator.AddTo", "depth": "1"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path", "edge_order"]
+    },
+    {
+      "id": "subgraph-default-depth",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/graph/subgraph",
+      "params": {"symbol": "pkg/mathutil.go:Add"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path", "edge_order"]
+    },
+    {
+      "id": "bots-roster",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/bots",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "bots-runs-empty",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/bots/runs",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "bots-run-unknown-id",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/bots/runs/no-such-run",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "bots-run-bad-suffix",
+      "kind": "rest",
+      "method": "POST",
+      "route": "/api/bots/doctor/bogus",
+      "params": {},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "bots-run-unknown-bot",
+      "kind": "rest",
+      "method": "POST",
+      "route": "/api/bots/no-such-bot/run",
+      "params": {},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-add",
+      "kind": "rest",
+      "method": "POST",
+      "route": "/api/memory",
+      "params": {
+        "kind": "rule",
+        "title": "rest route rule",
+        "text": "the graph answers where code lives",
+        "source": "harness"
+      },
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path", "generated_id", "timestamp"]
+    },
+    {
+      "id": "memory-list",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/memory",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path", "generated_id", "timestamp"]
+    },
+    {
+      "id": "memory-list-kind-filter",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/memory",
+      "params": {"kind": "lesson"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path", "generated_id", "timestamp"]
+    },
+    {
+      "id": "memory-search",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/memory/search",
+      "params": {"q": "where does code live", "top": "3"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path", "generated_id", "timestamp"]
+    }
+  ]
+}

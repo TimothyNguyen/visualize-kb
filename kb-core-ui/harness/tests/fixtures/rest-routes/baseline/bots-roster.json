@@ -1,0 +1,140 @@
+{
+  "captured_at": "2026-08-28T19:05:20.722220+00:00",
+  "comparable": {
+    "body": [
+      {
+        "args": [],
+        "description": "Preflight: verify the whole orchestration chain — python, gh, claude, and kb-core-ui's MCP server all connect.",
+        "kind": "go-native",
+        "name": "doctor",
+        "needsAuth": false,
+        "title": "Doctor"
+      },
+      {
+        "args": [],
+        "description": "Re-index the code graph and check its integrity (dangling edges, resolution quality). No AI, no auth.",
+        "kind": "go-native",
+        "name": "graph-sync",
+        "needsAuth": false,
+        "title": "Graph Sync"
+      },
+      {
+        "args": [
+          {
+            "label": "PR number",
+            "name": "pr_number",
+            "placeholder": "e.g. 12",
+            "required": true
+          },
+          {
+            "bool": true,
+            "label": "Dry run (print instead of posting)",
+            "name": "dry_run",
+            "required": false
+          }
+        ],
+        "description": "Review an open PR's diff for breaking changes, quality, duplication, rewrites, pattern-mismatch, and cross-boundary contract mismatches. Posts a comment (or use dry-run).",
+        "kind": "python",
+        "name": "pr-review",
+        "needsAuth": true,
+        "title": "PR Review"
+      },
+      {
+        "args": [
+          {
+            "label": "Commit ref",
+            "name": "ref",
+            "placeholder": "HEAD",
+            "required": false
+          }
+        ],
+        "description": "Review a single commit's diff (same dimensions as PR review) — run after committing, before pushing.",
+        "kind": "python",
+        "name": "commit-check",
+        "needsAuth": true,
+        "title": "Commit Check"
+      },
+      {
+        "args": [
+          {
+            "label": "Symbol or file",
+            "name": "target",
+            "placeholder": "e.g. BuildFlat or internal/graph/builder.go",
+            "required": true
+          },
+          {
+            "bool": true,
+            "label": "Write file to disk",
+            "name": "write",
+            "required": false
+          }
+        ],
+        "description": "Generate test cases for a function or file, using the graph to cover real callers and edge cases. Prints tests (add 'true' to write the file).",
+        "kind": "python",
+        "name": "test-writer",
+        "needsAuth": true,
+        "title": "Test Writer"
+      },
+      {
+        "args": [
+          {
+            "label": "Focus area (optional)",
+            "name": "focus",
+            "placeholder": "e.g. the server package",
+            "required": false
+          }
+        ],
+        "description": "Scan the whole codebase for anomalies: possible breakages, cross-boundary contract mismatches, duplication, and rule violations (from memory).",
+        "kind": "python",
+        "name": "anomaly-scan",
+        "needsAuth": true,
+        "title": "Anomaly Detector"
+      },
+      {
+        "args": [
+          {
+            "label": "Feature description",
+            "name": "feature",
+            "placeholder": "e.g. add a REST endpoint to delete a symbol",
+            "required": true
+          }
+        ],
+        "description": "Plan a proposed feature against this codebase: rules it might break, code to reuse, optimal options, a PRD, and tests to keep current behavior safe.",
+        "kind": "python",
+        "name": "feature-verdict",
+        "needsAuth": true,
+        "title": "Feature Verdict"
+      },
+      {
+        "args": [
+          {
+            "label": "GitHub issue number",
+            "name": "issue",
+            "placeholder": "e.g. 7",
+            "required": true
+          },
+          {
+            "bool": true,
+            "label": "Post as issue comment",
+            "name": "comment",
+            "required": false
+          }
+        ],
+        "description": "Correlate a GitHub issue to the code via the graph + memory and suggest fixes with file:line references. (Intercom source planned — needs auth.)",
+        "kind": "python",
+        "name": "triage",
+        "needsAuth": true,
+        "title": "Support Triage"
+      }
+    ],
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "rest-routes",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "bots-roster"
+}
