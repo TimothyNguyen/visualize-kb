@@ -129,7 +129,7 @@ BOT_PASSTHROUGH: list[tuple[str, str]] = [
 
 def _pending(task: str):
     def run(cmd: Command, values: dict, args: list[str]) -> None:
-        raise KbError(f"not implemented in the Python port yet (SPEC.md {task})")
+        raise KbError(f"not implemented in the Python port yet (spec/SPEC.md {task})")
 
     return run
 

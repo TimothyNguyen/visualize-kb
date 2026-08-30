@@ -265,6 +265,28 @@ def test_rebuild_code_writes_community_name(tmp_path):
     )
 
 
+def test_rebuild_code_no_cluster_writes_schema_and_preserves_commit(tmp_path):
+    """Raw watch output uses links and keeps existing graph provenance."""
+    from kb_core.watch import _rebuild_code
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "app.py").write_text("def run(): return 1\n", encoding="utf-8")
+
+    assert _rebuild_code(corpus, no_cluster=True, acquire_lock=False) is True
+    graph_path = corpus / "kb-core-out" / "graph.json"
+    data = json.loads(graph_path.read_text(encoding="utf-8"))
+    data["built_at_commit"] = "preserve-me"
+    graph_path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert _rebuild_code(corpus, no_cluster=True, acquire_lock=False) is True
+    after = json.loads(graph_path.read_text(encoding="utf-8"))
+    assert after["graph_schema_version"] == 1
+    assert "links" in after
+    assert "edges" not in after
+    assert after["built_at_commit"] == "preserve-me"
+
+
 def test_rebuild_code_drops_labels_whose_community_changed(tmp_path):
     """An incremental rebuild must not reuse a saved label for a community whose
     membership changed. Labels are keyed by cid, but re-clustering reassigns cids,

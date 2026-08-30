@@ -2412,8 +2412,8 @@ def dispatch_command(cmd: str) -> None:
             from kb_core.paths import load_node_link_graph as _lnlg
             return _lnlg(data), data
         try:
-            G_cur, _ = _load_graph(_current_path)
-            G_oth, _ = _load_graph(_other_path)
+            G_cur, _current_data = _load_graph(_current_path)
+            G_oth, _other_data = _load_graph(_other_path)
         except Exception as exc:
             print(f"[kb-core merge-driver] error loading graphs: {exc}", file=sys.stderr)
             sys.exit(1)  # surface the conflict so git doesn't accept a corrupt merge
@@ -2429,6 +2429,15 @@ def dispatch_command(cmd: str) -> None:
             out_data = _jg.node_link_data(merged, edges="links")
         except TypeError:
             out_data = _jg.node_link_data(merged)
+        from kb_core.export import stamp_graph_metadata as _stamp_graph_metadata
+        _stamp_graph_metadata(
+            out_data,
+            built_at_commit=(
+                _current_data.get("built_at_commit")
+                if _current_data.get("built_at_commit") is not None
+                else _other_data.get("built_at_commit")
+            ),
+        )
         from kb_core.paths import write_json_atomic
         write_json_atomic(_current_path, out_data, indent=2)
         sys.exit(0)
@@ -3958,6 +3967,7 @@ def dispatch_command(cmd: str) -> None:
             from kb_core.export import (
                 backup_if_protected as _backup,
                 existing_graph_node_count as _existing_graph_node_count,
+                stamp_graph_metadata as _stamp_graph_metadata,
             )
             if (
                 incremental_mode
@@ -4062,6 +4072,22 @@ def dispatch_command(cmd: str) -> None:
                         file=sys.stderr,
                     )
                     sys.exit(1)
+            _existing_metadata: dict = {}
+            if existing_graph_path.exists():
+                try:
+                    _existing_payload = json.loads(
+                        existing_graph_path.read_text(encoding="utf-8")
+                    )
+                    if isinstance(_existing_payload, dict):
+                        _existing_metadata = _existing_payload
+                except (OSError, json.JSONDecodeError):
+                    pass
+            from kb_core.watch import _git_head as _gh_target
+            _stamp_graph_metadata(
+                merged,
+                built_at_commit=_gh_target(cwd=Path(target).resolve()) if has_path else None,
+                preserve_from=_existing_metadata,
+            )
             _backup(kb_core_out)
             _invalidate_file_manifest_for_db_graph()
             from kb_core.paths import write_json_atomic as _write_json_atomic

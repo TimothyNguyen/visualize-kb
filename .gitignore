@@ -1,1 +1,38 @@
 .claude/scheduled_tasks.lock
+
+# Local Python environments and package output
+.venv*/
+**/.venv*/
+**/*.egg-info/
+
+# Build output and dependency caches
+**/node_modules/
+**/dist/
+**/build/
+**/bin/
+**/obj/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+
+# Generated knowledge-graph output
+kb-core-out/
+graphify-out/
+**/kb-core-out/cache/
+**/kb-core-out/memory/
+**/kb-core-out/reflections/
+**/kb-core-out/.kb_core_*.json
+**/kb-core-out/.vocab.txt
+
+# Local KB Core state
+**/.kb-core-ui/
+
+# Local secrets and test coverage
+.env
+.env.*
+!.env.example
+**/.coverage
+**/coverage/
+
+# Generated UI overview; graph.json remains tracked runtime data
+kb-core-ui/web/public/kb-core-out/graph-overview.json

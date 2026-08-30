@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from kb_core.build import build_from_json
 from kb_core.cluster import cluster
-from kb_core.export import to_json, to_cypher, to_graphml, to_html, to_canvas, to_obsidian
+from kb_core.export import GRAPH_SCHEMA_VERSION, to_json, to_cypher, to_graphml, to_html, to_canvas, to_obsidian
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -29,6 +29,19 @@ def test_to_json_valid_json():
         data = json.loads(out.read_text())
         assert "nodes" in data
         assert "links" in data
+
+
+def test_to_json_includes_graph_schema_version(tmp_path):
+    G = make_graph()
+    communities = cluster(G)
+    out = tmp_path / "graph.json"
+
+    assert to_json(G, communities, str(out), built_at_commit="test-commit")
+
+    data = json.loads(out.read_text())
+    assert data["graph_schema_version"] == GRAPH_SCHEMA_VERSION
+    assert isinstance(data["graph_schema_version"], int)
+    assert data["built_at_commit"] == "test-commit"
 
 def test_to_json_nodes_have_community():
     G = make_graph()

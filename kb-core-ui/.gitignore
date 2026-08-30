@@ -4,6 +4,8 @@
 # Go build output
 /kb-core-ui
 /kb-core-ui.exe
+/legacy/go/kb-core-ui
+/legacy/go/kb-core-ui.exe
 /dist/
 
 # Python (bots/, python/)

@@ -448,6 +448,15 @@ class _QueryScores(NamedTuple):
     best_seed_by_term: dict[str, str]
 
 
+class QueryExecution(NamedTuple):
+    start_nodes: list[str]
+    nodes: set[str]
+    edges: list[tuple]
+    resolved_filters: list[str]
+    filter_source: str
+    traversal_graph: nx.Graph | None = None
+
+
 def _score_nodes(G: nx.Graph, terms: list[str]) -> list[tuple[float, str]]:
     """Combined query scorer returning the existing ranked `(score, node_id)` list.
 
@@ -859,6 +868,7 @@ def _filter_graph_by_context(G: nx.Graph, context_filters: list[str] | None) -> 
     if not filters:
         return G
     H = G.__class__()
+    H.graph.update(G.graph)
     H.add_nodes_from(G.nodes(data=True))
     if isinstance(G, (nx.MultiGraph, nx.MultiDiGraph)):
         for u, v, key, data in G.edges(keys=True, data=True):
@@ -1194,6 +1204,60 @@ def _query_graph_text(
     context_filters: list[str] | None = None,
     graph_path: str | None = None,
 ) -> str:
+    execution = _run_query(
+        G,
+        question,
+        mode=mode,
+        depth=depth,
+        context_filters=context_filters,
+    )
+    if not execution.start_nodes:
+        return "No matching nodes found."
+    header_parts = [
+        f"Traversal: {mode.upper()} depth={depth}",
+        f"Start: {[G.nodes[n].get('label', n) for n in execution.start_nodes]}",
+    ]
+    # Name the graph this answer came from. `kb_core-out/` resolves against the
+    # CWD, so running a query from a parent project while thinking about a
+    # vendored subproject silently answers from the wrong corpus — the output is
+    # well-formed and confidently wrong, and nothing in it said which graph was
+    # opened (#2789). Shown relative when the graph is under the CWD (the normal
+    # case, and short), absolute when it is not — which is exactly the case worth
+    # noticing. The node count travels with it because "355 nodes" vs "3178
+    # nodes" is often the first thing that looks wrong.
+    if graph_path:
+        header_parts.insert(0, f"Graph: {_display_graph_path(graph_path)} "
+                               f"({G.number_of_nodes()} nodes)")
+    if execution.resolved_filters:
+        header_parts.append(
+            f"Context: {', '.join(execution.resolved_filters)} ({execution.filter_source})"
+        )
+    header_parts.append(f"{len(execution.nodes)} nodes found")
+    header = " | ".join(header_parts) + "\n\n"
+    # Pass the seeds so the queried symbol renders first and survives truncation
+    # (#BUG2): a branch merge had silently dropped this argument, leaving the
+    # seed-first ordering as dead code.
+    traversal_graph = execution.traversal_graph
+    if traversal_graph is None:
+        # Keep compatibility with older/custom five-field QueryExecution values.
+        traversal_graph = G
+    return header + _subgraph_to_text(
+        traversal_graph,
+        execution.nodes,
+        execution.edges,
+        token_budget,
+        seeds=execution.start_nodes,
+    )
+
+
+def _run_query(
+    G: nx.Graph,
+    question: str,
+    *,
+    mode: str = "bfs",
+    depth: int = 3,
+    context_filters: list[str] | None = None,
+) -> QueryExecution:
     terms = _query_terms(question)
     # One graph scoring pass produces both the combined ranking (used to drive
     # the gap-based seed selection below) and the per-token singleton winners
@@ -1217,33 +1281,22 @@ def _query_graph_text(
         }
     start_nodes = _pick_seeds(qs.ranked, G=G, best_seed_by_term=best_seed_by_term)
     if not start_nodes:
-        return "No matching nodes found."
+        return QueryExecution([], set(), [], [], "none", G)
     resolved_filters, filter_source = _resolve_context_filters(question, context_filters)
     traversal_graph = _filter_graph_by_context(G, resolved_filters)
-    nodes, edges = _dfs(traversal_graph, start_nodes, depth) if mode == "dfs" else _bfs(traversal_graph, start_nodes, depth)
-    header_parts = [
-        f"Traversal: {mode.upper()} depth={depth}",
-        f"Start: {[G.nodes[n].get('label', n) for n in start_nodes]}",
-    ]
-    # Name the graph this answer came from. `kb_core-out/` resolves against the
-    # CWD, so running a query from a parent project while thinking about a
-    # vendored subproject silently answers from the wrong corpus — the output is
-    # well-formed and confidently wrong, and nothing in it said which graph was
-    # opened (#2789). Shown relative when the graph is under the CWD (the normal
-    # case, and short), absolute when it is not — which is exactly the case worth
-    # noticing. The node count travels with it because "355 nodes" vs "3178
-    # nodes" is often the first thing that looks wrong.
-    if graph_path:
-        header_parts.insert(0, f"Graph: {_display_graph_path(graph_path)} "
-                               f"({G.number_of_nodes()} nodes)")
-    if resolved_filters:
-        header_parts.append(f"Context: {', '.join(resolved_filters)} ({filter_source})")
-    header_parts.append(f"{len(nodes)} nodes found")
-    header = " | ".join(header_parts) + "\n\n"
-    # Pass the seeds so the queried symbol renders first and survives truncation
-    # (#BUG2): a branch merge had silently dropped this argument, leaving the
-    # seed-first ordering as dead code.
-    return header + _subgraph_to_text(traversal_graph, nodes, edges, token_budget, seeds=start_nodes)
+    nodes, edges = (
+        _dfs(traversal_graph, start_nodes, depth)
+        if mode == "dfs"
+        else _bfs(traversal_graph, start_nodes, depth)
+    )
+    return QueryExecution(
+        start_nodes,
+        nodes,
+        edges,
+        resolved_filters,
+        filter_source or "none",
+        traversal_graph,
+    )
 
 
 def _find_node_tiers(

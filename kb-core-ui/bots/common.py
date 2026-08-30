@@ -17,9 +17,9 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
+import sysconfig
 import tempfile
 from pathlib import Path
 
@@ -54,16 +54,16 @@ def gh(args: list[str], cwd: Path) -> str:
 def find_kb_core_ui_bin(explicit: str | None = None) -> str:
     if explicit:
         return explicit
-    repo_root = Path(__file__).resolve().parent.parent
-    local = repo_root / "kb-core-ui"
-    if local.exists() and os.access(local, os.X_OK):
+    # Use this interpreter's installed Python console script, not a stale Go
+    # build in the checkout or on PATH. --kb-core-ui-bin opts into legacy Go.
+    name = "kb-core-ui.exe" if os.name == "nt" else "kb-core-ui"
+    local = Path(sysconfig.get_path("scripts")) / name
+    if local.is_file() and os.access(local, os.X_OK):
         return str(local)
-    found = shutil.which("kb-core-ui")
-    if found:
-        return found
     raise RuntimeError(
-        "no kb-core-ui binary found — build one with "
-        "`go build -o kb-core-ui ./cmd/kb-core-ui` or pass --kb-core-ui-bin"
+        "no Python kb-core-ui entry point found - install with "
+        "`python -m pip install -e ./python` from kb-core-ui/ using this "
+        "interpreter, or pass --kb-core-ui-bin for an explicit runtime"
     )
 
 
