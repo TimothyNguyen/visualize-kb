@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kb-core-ui-harness"
 version = "0.1.0"
-description = "Go-vs-Python parity harness for kb-core-ui (SPEC.md T3/T4)"
+description = "Go-vs-Python parity harness for kb-core-ui (spec/SPEC.md T3/T4)"
 requires-python = ">=3.10"
 dependencies = []
 

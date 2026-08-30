@@ -1,11 +1,55 @@
 # T13 handoff: default-runtime switch and the legacy Go move
 
-Written for whoever picks up SPEC.md T13 — the last open task in the
-Go-to-Python migration. T1–T12 are done and committed on
-`codex/go-to-python-migration`.
+## Completed locally — 2026-08-28
+
+T13 is complete; spec/SPEC.md T1-T13 are all marked done. T13 changes have not
+been committed or pushed. The checklist below is retained as migration
+history; do not repeat the move on the current tree.
+
+The prerequisite was observed before any cutover edits: CI run
+[33212177435](https://github.com/TimothyNguyen/visualize-kb/actions/runs/33212177435)
+passed at `bbad0ff235d6ace5a66c4a7c1e7229a468de986d`, including
+`passed=104 failed=0 errored=0` in the Go-vs-Python parity step. This is the
+pre-cutover gate, not a CI run of the uncommitted T13 changes.
+
+- The 38 Go source/module files under `legacy/go/` match their original Git
+  blobs. The module remains complete and read-only; build outputs stay there.
+- Harness oracle resolution uses only `legacy/go/` or explicit Go overrides,
+  never PATH or old root-level build outputs.
+- Common bot code, PR review, and preflight select the current interpreter's
+  Python console script. `--kb-core-ui-bin` is the explicit legacy escape hatch.
+  Bot subprocesses keep `sys.executable` rather than resolving `python3`.
+- The active CI gate builds/tests from `legacy/go/`. Inactive nested bot
+  workflows remain examples, updated to Python and not enabled.
+
+### Verification results
+
+- Go build succeeded. `go version -m` identifies `kb-core-ui/cmd/kb-core-ui`.
+- `go test ./...`: all packages passed except the documented Windows-only
+  `internal/server TestBotsEndpoints` POSIX shell fixture failure. Source was
+  not changed to suppress it; the pre-cutover Linux CI suite passed.
+- Python tests: **72 passed**.
+- Harness tests: **127 passed**. A temporary Go source overlay adds observable
+  output to a separately built oracle: clean Go-vs-Python passes, mutated Go
+  fails with one difference and no execution errors. Archived source stays intact.
+- Full parity: **104 passed, 0 failed, 0 errored**.
+- Baseline replay: **104 passed, 0 failed, 0 errored**.
+- `npm run build`: passed, with no React source or API type changes.
+- The actual default Python console script completed an MCP handshake and
+  exposed all 10 tools. No paid AI bot was invoked.
+- CI paths validated locally; fixture baselines remain unchanged.
+
+Local reports are in `kb-core-ui/harness/.harness-work/runs/`:
+`20260828T223514290804+0000-parity/report.json` and
+`20260828T223536144735+0000-verify/report.json`.
+
+## Original runbook
+
+Originally written for whoever picked up spec/SPEC.md T13 after T1-T12 were
+committed on `codex/go-to-python-migration`.
 
 This is a runbook, not prose. It is deliberately in plain English rather than
-the caveman notation SPEC.md uses: the sequence is destructive and order
+the caveman notation spec/SPEC.md uses: the sequence is destructive and order
 matters, and compression here buys nothing worth the ambiguity.
 
 ## What T13 is
@@ -18,8 +62,9 @@ matters, and compression here buys nothing worth the ambiguity.
 
 **C7 forbids the move until the CI parity gate has actually passed.**
 
-`.github/workflows/parity.yml` was added in T12 and *has never run*. Local
-parity is 104/104, but V10 names CI as the gate, not a developer's machine.
+At handoff creation, `.github/workflows/parity.yml` had been added in T12
+but had never run. Local parity was 104/104, but V10 names CI as the gate,
+not a developer's machine. The completion section above records the green run.
 Before touching anything:
 
 1. Push `codex/go-to-python-migration`.
@@ -136,7 +181,7 @@ Known sites:
 
 `kb-core-ui/.github/workflows/` holds two workflows left over from when
 `kb-core-ui` was its own repository. GitHub only reads `.github/` at the
-repository root, so they do not run here (SPEC.md B13). Decide deliberately:
+repository root, so they do not run here (spec/SPEC.md B13). Decide deliberately:
 update them for consistency, or delete them as dead weight. Do not promote
 them to the root without checking what they would start doing — the PR review
 bot spends API credits.
@@ -171,7 +216,7 @@ running the wrong runtime) is invisible.
 Python runtime, where the Go oracle now lives, and that it is retained for
 parity rather than for use.
 
-### 7. Update SPEC.md
+### 7. Update spec/SPEC.md
 
 Mark T13 `x`. Add a `§B` row for anything that bit you. If the PATH-shadowing
 trap above turns out to be real in practice, it deserves one.
@@ -179,9 +224,9 @@ trap above turns out to be real in practice, it deserves one.
 ## Verification — all of it, in this order
 
 ```
-cd kb-core-ui/legacy/go && go build -o ../../kb-core-ui.exe ./cmd/kb-core-ui && go test ./...
-cd kb-core-ui/python    && python -m pytest -q       # expect 68 passed
-cd kb-core-ui/harness   && python -m pytest -q       # expect 122 passed
+cd kb-core-ui/legacy/go && go build -o kb-core-ui.exe ./cmd/kb-core-ui && go test ./...
+cd kb-core-ui/python    && python -m pytest -q       # now 72 passed
+cd kb-core-ui/harness   && python -m pytest -q       # now 127 passed
 cd kb-core-ui/harness   && python -m harness parity --oracle go --candidate python
 cd kb-core-ui/harness   && python -m harness verify
 ```
@@ -194,11 +239,11 @@ harness is not running Python on both sides — for example, break something in
 only meaningful if it can go red.
 
 `verify` is a local check only; it replays baselines recorded on Windows and
-some values are platform-specific (SPEC.md B11, V12). Do not add it to CI.
+some values are platform-specific (spec/SPEC.md B11, V12). Do not add it to CI.
 
 ## Expected CI first-run friction
 
-The parity workflow has never executed. Anticipate:
+Before the first CI execution, these were the anticipated risks:
 
 - **`.js` Content-Type.** Go and Python both read the OS mime table, so a
   `.js` asset is `application/javascript` on Windows and likely

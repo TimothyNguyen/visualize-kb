@@ -25,13 +25,13 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 import preflight
+from common import find_kb_core_ui_bin
 
 REVIEW_CRITERIA = """\
 Review this pull request diff. For each issue you find, judge it against
@@ -83,24 +83,6 @@ def gh(args: list[str], cwd: Path) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"gh {' '.join(args)} failed:\n{result.stderr}")
     return result.stdout
-
-
-def find_kb_core_ui_bin(explicit: str | None) -> str:
-    if explicit:
-        return explicit
-    # Prefer a binary sitting next to this script's repo root (built via
-    # `go build -o kb-core-ui ./cmd/kb-core-ui`), falling back to PATH.
-    repo_root = Path(__file__).resolve().parent.parent
-    local = repo_root / "kb-core-ui"
-    if local.exists() and os.access(local, os.X_OK):
-        return str(local)
-    found = shutil.which("kb-core-ui")
-    if found:
-        return found
-    raise RuntimeError(
-        "no kb-core-ui binary found — build one with "
-        "`go build -o kb-core-ui ./cmd/kb-core-ui` or pass --kb-core-ui-bin"
-    )
 
 
 def ensure_indexed(kb_core_ui_bin: str, repo: Path) -> None:

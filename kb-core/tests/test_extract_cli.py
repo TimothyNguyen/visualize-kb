@@ -1,6 +1,7 @@
 """Tests for `kb-core extract` CLI dispatch path in kb_core.__main__."""
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -884,6 +885,40 @@ def test_extract_timing_flag_emits_stage_timings(monkeypatch, tmp_path, capsys):
         mainmod.main()
     assert exc2.value.code == 0
     assert "kb-core timing" not in capsys.readouterr().err
+
+
+def test_extract_no_cluster_writes_schema_version_with_edges(monkeypatch, tmp_path):
+    """Raw CLI extraction keeps its established ``edges`` shape and adds schema metadata."""
+    code = tmp_path / "code"
+    code.mkdir()
+    (code / "a.py").write_text(
+        "def a():\n    return b()\n\ndef b():\n    return 1\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+    monkeypatch.setattr(mainmod, "_check_skill_version", lambda _: None)
+    monkeypatch.setattr(
+        mainmod.sys,
+        "argv",
+        [
+            "kb-core",
+            "extract",
+            str(code),
+            "--no-cluster",
+            "--code-only",
+            "--out",
+            str(out),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        mainmod.main()
+
+    assert exc_info.value.code == 0
+    data = json.loads((out / "kb-core-out" / "graph.json").read_text(encoding="utf-8"))
+    assert data["graph_schema_version"] == 1
+    assert "edges" in data
+    assert "links" not in data
 
 
 @pytest.mark.parametrize(

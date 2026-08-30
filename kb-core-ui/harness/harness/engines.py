@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,21 +15,19 @@ def resolve_go_binary(explicit: str | None = None) -> str:
     env = os.environ.get("KB_CORE_UI_BIN")
     if env:
         return env
-    # engines.py -> harness/harness/engines.py; parents[2] is the kb-core-ui
-    # repo root, where `go build -o kb-core-ui ./cmd/kb-core-ui` drops its
-    # binary (same convention as bots/common.py:find_kb_core_ui_bin).
-    repo_root = Path(__file__).resolve().parents[2]
+    # C6 keeps the archived Go module runnable for regression comparison.
+    # Never search PATH: pip installs a Python entry point with the same name,
+    # which would silently turn Go-vs-Python parity into Python-vs-Python.
+    repo_root = Path(__file__).resolve().parents[2] / "legacy" / "go"
     for name in ("kb-core-ui.exe", "kb-core-ui"):
         candidate = repo_root / name
-        if candidate.exists():
+        if candidate.is_file():
             return str(candidate)
-    found = shutil.which("kb-core-ui")
-    if found:
-        return found
     raise EngineError(
-        "no kb-core-ui binary found — build one with "
+        "no Go oracle binary found - build one with "
         "`go build -o kb-core-ui.exe ./cmd/kb-core-ui` (or kb-core-ui on non-Windows) "
-        "from kb-core-ui/, or pass --go-bin / set $KB_CORE_UI_BIN"
+        "from kb-core-ui/legacy/go/, or pass --go-bin / set $KB_CORE_UI_BIN "
+        "to an explicit Go build (never the Python console script)"
     )
 
 
@@ -141,6 +138,6 @@ def get_engine(name: str, *, bin_override: str | None = None) -> ResolvedEngine:
     if config is None:
         raise EngineError(
             f"no engine registered for {name!r} (known: {sorted(ENGINES)}) — "
-            "see SPEC.md T5-T11 for adding a python engine"
+            "see spec/SPEC.md T5-T11 for adding a python engine"
         )
     return ResolvedEngine(config=config, bin_path=config.resolve_bin(bin_override))

@@ -4,8 +4,20 @@ AI bots that operate on this repo (or any repo kb-core-ui has indexed),
 using kb-core-ui's MCP server as their source of code context — search the
 graph, don't read whole files — instead of a raw file-reading agent loop.
 
-Each bot is a standalone Python script (stdlib only, no `pip install`
-needed) that:
+Each bot is a standalone Python script (stdlib only) that uses the installed
+Python runtime. From `kb-core-ui/`, install it in your active environment:
+
+```sh
+python -m pip install -e ./python
+```
+
+Bots resolve the console script from their interpreter's scripts directory,
+not a Go build in the checkout or on PATH. The CLI launches scripts with the
+same Python interpreter. `--kb-core-ui-bin /absolute/path/to/executable`
+opts into another runtime, including the read-only oracle in `legacy/go/`.
+`KB_CORE_UI_BIN` is a harness oracle override, not a bot runtime override.
+
+Each bot:
 1. Shells out to `kb-core-ui parse`/`kb-core-ui mcp` for repo context.
 2. Shells out to `claude -p` (headless Claude Code) with a task-specific
    prompt and an MCP config scoped to kb-core-ui's tools.
@@ -39,14 +51,14 @@ it respond with its tools). Every bot also runs these checks itself and
 refuses to start with a clear message if a link it needs is broken —
 rather than failing deep inside with a raw error.
 
-Some bots are Go-native (pure graph work, no AI/auth needed — they live in
-`cmd/kb-core-ui/`); the AI-driven ones are Python scripts here in `bots/`.
+Graph sync runs in `python/kb_core_ui/cli/root.py` (no AI/auth needed);
+AI-driven bots are Python scripts here in `bots/`.
 
 | Bot | Impl | Trigger | Needs AI? | Status |
 |---|---|---|---|---|
 | Doctor (preflight) | `preflight.py` | `kb-core-ui bot doctor` | no | ✅ working |
-| Graph Sync | Go | `kb-core-ui bot graph-sync`, or on push via `.github/workflows/graph-sync-bot.yml` | no | ✅ working |
-| PR Review | `pr_review.py` | `kb-core-ui bot pr-review <pr>`, or on push via `.github/workflows/pr-review-bot.yml` | yes | ✅ working (needs `claude` auth) |
+| Graph Sync | Python | `kb-core-ui bot graph-sync` | no | ✅ working |
+| PR Review | `pr_review.py` | `kb-core-ui bot pr-review <pr>` | yes | ✅ working (needs `claude` auth) |
 | Commit Check | `commit_check.py` | `kb-core-ui bot commit-check [ref]` | yes | ✅ working (needs `claude` auth) |
 | Test Writer | `test_writer.py` | `kb-core-ui bot test-writer <symbol-or-file>` | yes | ✅ working (needs `claude` auth) |
 | Anomaly Detector | `anomaly_scan.py` | `kb-core-ui bot anomaly-scan` | yes | ✅ working (needs `claude` auth) |
@@ -57,14 +69,7 @@ Some bots are Go-native (pure graph work, no AI/auth needed — they live in
 The AI bots share `common.py` (index → hand claude the kb-core-ui MCP tools,
 which cover both the code graph and the vector memory → run a prompt →
 parse output). Add new AI bots by writing a thin script against that
-toolkit and registering them in `internal/bots/registry.go`.
-| Commit Check | — | — | planned |
-| Test Writer | — | — | planned |
-| Graph Sync | — | — | planned |
-| Anomaly Detector | — | — | planned |
-| Data Supply (MCP) | — | — | planned — this is kb-core-ui's existing `kb-core-ui mcp` server, already usable by any MCP client |
-| Support Triage (GitHub issues + chat/Intercom) | — | — | planned — Intercom needs to be authorized first |
-| Feature Verdict (PRD/impact analysis) | — | — | planned |
+toolkit and registering them in `python/kb_core_ui/bots/registry.py`.
 
 ### PR Review
 
@@ -75,10 +80,12 @@ codebase, and cross-boundary contract mismatches (e.g. a frontend assuming
 a shape the backend doesn't actually send).
 
 ```sh
-# from the repo root, with kb-core-ui built (go build -o kb-core-ui ./cmd/kb-core-ui)
+# after installing the Python runtime in the current environment
 kb-core-ui bot pr-review 12          # posts a comment on PR #12
 kb-core-ui bot pr-review 12 --dry-run  # prints the review instead of posting
 ```
 
-Runs automatically on every PR push once `ANTHROPIC_API_KEY` is set as a
-repo secret — see `.github/workflows/pr-review-bot.yml`.
+`kb-core-ui/.github/workflows/` contains inactive bot workflow examples, now
+using Python. GitHub loads only workflows at the repository root; setting a
+secret does not enable these examples. Review permissions and AI costs before
+promoting them. T13 does not enable them.

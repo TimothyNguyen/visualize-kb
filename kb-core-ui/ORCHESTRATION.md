@@ -3,18 +3,25 @@
 The AI engineering-intelligence platform built on top of kb-core-ui's code
 graph. This maps every requirement to its concrete, verifiable status.
 
+Python is the default runtime after spec/SPEC.md T13. Install from `kb-core-ui/`
+with `python -m pip install -e "./python[dev]"` in an activated environment.
+The complete Go module is archived read-only in `legacy/go/` for parity;
+see `legacy/README.md` for build instructions and rollback. Bot scripts use
+the current interpreter's console entry point; `--kb-core-ui-bin` is the
+explicit legacy escape hatch.
+
 Legend: ✅ done & verified · 🔒 blocked on your `claude` login (code complete)
 
 ## 0. Foundation — the code graph ✅
 
 | Capability | Where |
 |---|---|
-| Parse repo into a symbol/call graph (Go, TS, TSX, JS, Python) | `internal/parser` |
-| Top-level symbols only — no library/system internals | `internal/indexer` (skips deps), parsers emit only declared symbols |
-| Route-level detection (Go `net/http`) | `internal/parser/golang.go` |
-| Cross-file method→type resolution | `internal/graph` (`resolveParents`) |
-| Graph in SQLite, incremental re-index by content hash | `internal/store`, `internal/indexer` |
-| MCP server: AI searches the graph instead of reading files | `internal/mcp` |
+| Parse repo into a symbol/call graph (Go, TS, TSX, JS, Python) | `python/kb_core_ui/parser` |
+| Top-level symbols only — no library/system internals | `python/kb_core_ui/indexer.py` (skips deps), parsers emit only declared symbols |
+| Route-level detection (Go `net/http`) | `python/kb_core_ui/parser/golang.py` |
+| Cross-file method→type resolution | `python/kb_core_ui/builder.py` |
+| Graph in SQLite, incremental re-index by content hash | `python/kb_core_ui/store.py`, `python/kb_core_ui/indexer.py` |
+| MCP server: AI searches the graph instead of reading files | `python/kb_core_ui/mcp` |
 | Web graph visualizer | `web/` (React + @xyflow/react) |
 
 ## 1. "App can connect a Claude session from the terminal" ✅ / 🔒 credential
@@ -33,7 +40,7 @@ interactively, or set `ANTHROPIC_API_KEY`). No code can fix a login.
 
 ## 2. Bots — ✅ all 8 built
 
-Run any from the CLI (`kb-core-ui bot <name>`) or the web dashboard. Go-native
+Run any from the CLI (`kb-core-ui bot <name>`) or the web dashboard. Graph-only
 bots need no auth; AI bots preflight-check and fail gracefully until
 `claude` auth is present.
 
@@ -50,8 +57,9 @@ bots need no auth; AI bots preflight-check and fail gracefully until
 | **Data Supply** | feed graph+memory context to a coding agent | — | ✅ *is* `kb-core-ui mcp` (point any MCP client at it) |
 
 AI bots are stdlib-only Python in `bots/`, sharing `bots/common.py` (index →
-hand claude the kb-core-ui MCP tools → run prompt → parse output). Go-native
-bots live in `cmd/kb-core-ui`. All are in one registry (`internal/bots`), so
+hand claude the kb-core-ui MCP tools → run prompt → parse output). Graph-only
+bots live in `python/kb_core_ui/cli/root.py`. All are in one registry
+(`python/kb_core_ui/bots/registry.py`), so
 CLI and dashboard list the same set.
 
 > graph-sync earned its keep immediately: on first run it found a real bug
@@ -64,8 +72,8 @@ The counterpart to the graph: the graph answers *where code lives*, memory
 answers *what we know that isn't in the code* — primary rules, lessons,
 business logic, overviews. Stored as embeddings, searched semantically.
 
-- **Code graph** → SQLite (`internal/store`).
-- **Vector memory** → SQLite + embeddings (`internal/memory`).
+- **Code graph** → SQLite (`python/kb_core_ui/store.py`).
+- **Vector memory** → SQLite + embeddings (`python/kb_core_ui/memory`).
   - Default embedder: offline, dependency-free lexical hashing (feature
     hashing + light stemming + cosine, with a calibrated noise floor).
   - Optional neural embedder: set `KB_CORE_UI_EMBED_URL`/`MODEL` (any
@@ -96,14 +104,20 @@ unattended).
 ## Verify everything yourself
 
 ```sh
-go build -o kb-core-ui ./cmd/kb-core-ui
-go test ./...                             # all green
+python -m pip install -e "./python[dev]"
+cd python && python -m pytest -q && cd ..
 cd web && npm run build && cd ..          # frontend, zero TS errors
 kb-core-ui bot doctor                       # the orchestration chain
 kb-core-ui serve .                          # Graph + Bots + Memory tabs
 kb-core-ui memory search "how are call edges resolved"   # semantic recall
 kb-core-ui bot graph-sync                   # no-auth bot, runs fully
 ```
+
+For regression comparison, build the optional oracle from `legacy/go/` with
+`go build -o kb-core-ui ./cmd/kb-core-ui` (`kb-core-ui.exe` on Windows), then
+run `python -m harness parity --oracle go --candidate python` from `harness/`.
+The root `.github/workflows/parity.yml` gates this comparison in CI. Nested
+bot workflows remain inactive examples; no paid AI workflow was enabled.
 
 ## Possible next steps (not required)
 

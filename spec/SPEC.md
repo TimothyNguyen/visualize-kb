@@ -80,7 +80,7 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |T10|x|Port MCP service. Run tool-list, schema, graph-tool, and memory-tool parity cases.|V5,V8|
 |T11|x|Run React against Python. Keep client types and visible flows compatible.|V9|
 |T12|x|CI parity gate: root `.github/workflows/parity.yml` builds go oracle, runs go/port/harness tests, runs `parity --oracle go --candidate python`. Pin grammar versions.|V10|
-|T13|.|BLOCKED on T12 CI observed green (C7). Then: switch default runtime to Python; move go module → `kb-core-ui/legacy/go/` read-only; keep legacy oracle runnable for harness. Runbook: `T13-HANDOFF.md`.|V10,V11|
+|T13|x|Observed T12 CI green at `bbad0ff` (run `33212177435`, parity 104/104) before cutover. Python is the default; complete unchanged Go module archived read-only at `kb-core-ui/legacy/go/`. Harness ignores PATH; explicit oracle overrides retained. Local parity and verify both 104/104; Go mutation negative control passes. Evidence: `spec/T13-HANDOFF.md`.|V10,V11|
 
 ## §B
 
@@ -100,3 +100,8 @@ V11. Legacy move preserves complete runnable Go module under `kb-core-ui/legacy/
 |B12|2026-08-28|go buffers handler body ≤2048B → sets `Content-Length`; >2048B → chunked ∴ `/api/bots` (2.7KB) ⊥ `Content-Length`, py always sets it|`Content-Length` ∉ `status_headers` capture: framing ⊥ contract, same bytes either way; comparing it pins port to go internal buffer size|
 |B13|2026-08-28|repo had ⊥ active CI: `kb-core-ui/.github/workflows/*` vestigial from when `kb-core-ui` was own repo; github reads `.github/` @ repo root only ∴ V10 gate ⊥ existed to gate on|new root `.github/workflows/parity.yml`. Old 2 left in place, inert, flagged|
 |B14|2026-08-28|`python/pyproject.toml` floored grammars (`tree-sitter-go>=0.25`) but parser output = contract (cf. B3) ∴ CI could install grammar ≠ one parity proven against → diff looks like port bug|pin exact: `tree-sitter==0.26.0`, `-go/-python/-javascript==0.25.0`, `-typescript==0.23.2`|
+|B15|2026-08-28|After removing the root Go binary, harness PATH fallback selected the installed Python `kb-core-ui` console script as the Go oracle, allowing false Python-vs-Python parity.|Removed PATH/root-build discovery; resolve only `legacy/go/` or explicit Go overrides. Added shadowing regressions and a temporary Go build-overlay mutation that must fail parity without changing archived source.|
+|B16|2026-08-28|Bot runtime lookup was duplicated in common, PR review, and preflight; each could select stale Go on PATH. Python CLI launched scripts via `python3`, potentially switching environments.|All bot lookup delegates to the current interpreter's installed console script; `--kb-core-ui-bin` explicitly opts into another runtime. CLI launches scripts with `sys.executable`; precedence, missing-runtime, MCP configuration, and exit propagation are tested.|
+
+
+Next step: DB Visualizer - https://github.com/MotleyAI/slayer/tree/main

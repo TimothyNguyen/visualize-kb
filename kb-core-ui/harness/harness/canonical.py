@@ -86,7 +86,7 @@ def normalize_edge_order(value: Any, ctx: NormalizeContext) -> Any:
     it by ranging that map. Go randomizes map iteration order, so
     /api/graph/subgraph serves the same edge *set* in a different order on
     every call — Go disagrees with itself, not just with the port. Sorting is
-    declared per case (SPEC.md C4/V2), never globally: /api/graph reads its
+    declared per case (spec/SPEC.md C4/V2), never globally: /api/graph reads its
     edges straight out of SQLite and stays order-stable, so it must keep
     failing on a real reordering.
     """
