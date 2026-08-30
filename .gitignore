@@ -1,4 +1,5 @@
 .claude/scheduled_tasks.lock
+.worktrees/
 
 # Local Python environments and package output
 .venv*/
