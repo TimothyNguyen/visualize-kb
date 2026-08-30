@@ -4,8 +4,22 @@ import contextlib
 import inspect
 import io
 import json
+import math
 import sys
 import networkx as nx
+
+
+def _finite_weight(value) -> float:
+    """Edge weight for clustering, falling back to the schema default of 1.0.
+
+    Mirrors build_from_json's sanitisation: None, non-numeric, NaN/inf and
+    negative values all crash or destabilise the partition backends.
+    """
+    try:
+        weight = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    return weight if math.isfinite(weight) and weight >= 0 else 1.0
 
 
 def _suppress_output():
@@ -41,8 +55,23 @@ def _partition(G: nx.Graph, resolution: float = 1.0) -> dict[str, int]:
             json.dumps(row[2], sort_keys=True, ensure_ascii=False, default=str),
         ),
     )
+    # Parallel edges must not collapse to whichever one was added last: the
+    # partition backends read `weight`, and two `calls` between a pair is a
+    # stronger tie than one. Aggregate them into a single weighted edge.
+    # Guarded on multigraph input so simple graphs keep their exact prior
+    # behavior — a DiGraph's a→b and b→a still collapse the way they always did.
+    aggregate = G.is_multigraph()
     for src, tgt, attrs in edge_rows:
+        if aggregate and stable.has_edge(src, tgt):
+            merged = stable.edges[src, tgt]
+            merged["weight"] = merged["weight"] + _finite_weight(attrs.get("weight"))
+            merged["parallel_count"] = merged["parallel_count"] + 1
+            continue
         stable.add_edge(src, tgt, **attrs)
+        if aggregate:
+            merged = stable.edges[src, tgt]
+            merged["weight"] = _finite_weight(attrs.get("weight"))
+            merged["parallel_count"] = 1
 
     try:
         from graspologic.partition import leiden

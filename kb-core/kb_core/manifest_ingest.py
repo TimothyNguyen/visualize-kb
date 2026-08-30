@@ -22,7 +22,12 @@ from typing import Any
 
 from kb_core.ids import make_id
 
-__all__ = ["is_package_manifest_path", "extract_package_manifest", "PACKAGE_MANIFEST_NAMES"]
+__all__ = [
+    "is_package_manifest_path",
+    "extract_package_manifest",
+    "normalize_package_identity",
+    "PACKAGE_MANIFEST_NAMES",
+]
 
 # manifest filename (lowercased) -> ecosystem tag
 PACKAGE_MANIFEST_NAMES: dict[str, str] = {
@@ -47,6 +52,30 @@ def _pkg_id(name: str) -> str:
     same package -- its own manifest and any dependent's dependency line -- maps
     to one node."""
     return make_id("pkg", name)
+
+
+def normalize_package_identity(ecosystem: str, name: str) -> str:
+    """Ecosystem-qualified package identity, comparable across repositories.
+
+    Two repos naming the same dependency must produce the same string or a
+    cluster's automatic package linking matches nothing. The ecosystem prefix
+    keeps a Python `requests` from being fused with a Cargo crate of the same
+    name.
+
+    Python normalisation follows PEP 503, where `Foo.Bar`, `foo_bar` and
+    `foo-bar` are all the same distribution.
+    """
+    eco = str(ecosystem or "").strip().casefold()
+    raw = str(name or "").strip()
+    if not raw:
+        return ""
+    if eco == "python":
+        normalized = re.sub(r"[-_.]+", "-", raw).casefold()
+    elif eco == "apm":
+        normalized = raw.casefold()
+    else:
+        normalized = raw
+    return f"{eco}:{normalized}"
 
 
 def extract_package_manifest(path: Path) -> dict[str, Any]:
@@ -80,8 +109,15 @@ def extract_package_manifest(path: Path) -> dict[str, Any]:
     }
     if info.get("version"):
         node["version"] = info["version"]
+    # Cross-repo identity for `auto_links.packages`: the node id is derived from
+    # the name alone, which is enough within one repo but cannot tell a Python
+    # package from a crate once several repos are composed.
+    package_key = normalize_package_identity(eco, name)
+    if package_key:
+        node["package_key"] = package_key
     nodes: list[dict] = [node]
     edges: list[dict] = []
+    dependency_keys: list[str] = []
 
     seen: set[str] = set()
     for dep in info.get("deps", []):
@@ -91,6 +127,9 @@ def extract_package_manifest(path: Path) -> dict[str, Any]:
         if dep_nid == pkg_nid or dep_nid in seen:
             continue
         seen.add(dep_nid)
+        dep_key = normalize_package_identity(eco, dep)
+        if dep_key:
+            dependency_keys.append(dep_key)
         # The edge targets the dependency's canonical package id. If that package's
         # own manifest is in the corpus, the edge resolves to its (single) node; if
         # the dependency is external, build_from_json prunes the dangling edge. We
@@ -107,6 +146,8 @@ def extract_package_manifest(path: Path) -> dict[str, Any]:
             "source_location": "L1",
             "weight": 1.0,
         })
+    if dependency_keys:
+        node["dependency_keys"] = dependency_keys
     return {"nodes": nodes, "edges": edges}
 
 
