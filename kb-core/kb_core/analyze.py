@@ -580,10 +580,21 @@ def graph_diff(G_old: nx.Graph, G_new: nx.Graph) -> dict:
         for n in removed_node_ids
     ]
 
+    # Parallel edges share a node pair AND a relation, so the relation-only key
+    # collapses them and a genuinely added or removed occurrence never surfaces.
+    # Widen the key with the occurrence fields for multigraph inputs only —
+    # simple graphs must keep the narrow key, or editing an attribute on an
+    # existing edge would read as a remove plus an add.
+    _multi = G_old.is_multigraph() or G_new.is_multigraph()
+    if _multi:
+        from kb_core.build import edge_occurrence_values
+
     def edge_key(G: nx.Graph, u: str, v: str, data: dict) -> tuple:
-        if G.is_directed():
-            return (u, v, data.get("relation", ""))
-        return (min(u, v), max(u, v), data.get("relation", ""))
+        pair = (u, v) if G.is_directed() else (min(u, v), max(u, v))
+        key = (*pair, data.get("relation", ""))
+        if _multi:
+            key += edge_occurrence_values(data)
+        return key
 
     old_edge_keys = {
         edge_key(G_old, u, v, d)

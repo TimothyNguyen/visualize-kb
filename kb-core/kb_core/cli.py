@@ -79,6 +79,148 @@ def _default_graph_path() -> str:
     return str(Path(_KB_CORE_OUT) / "graph.json")
 
 
+def _nudge_with_cluster(payload: str) -> str:
+    """Add the `--cluster` sentence to a hook nudge when this repo is in a cluster.
+
+    Rewrites the precomputed JSON rather than templating it, so the constants stay
+    literal (and byte-identical for the overwhelmingly common non-cluster repo).
+    Any failure returns the payload untouched — a hook must never break a tool call.
+    """
+    try:
+        refs = _local_cluster_refs()
+        if not refs:
+            return payload
+        from kb_core.cluster_ref import cluster_hint_line
+
+        line = cluster_hint_line(refs)
+        if not line:
+            return payload
+        data = json.loads(payload)
+        block = data["hookSpecificOutput"]
+        block["additionalContext"] = f"{block['additionalContext']} {line}"
+        return json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n"
+    except Exception:
+        return payload
+
+
+def _parse_cluster_option(args: list[str]) -> "tuple[str | None, bool, list[str]]":
+    """Strip `--cluster [NAME]` out of `args` -> (name, was_present, remaining).
+
+    The value is optional: bare `--cluster` means "the one cluster this repo
+    belongs to". A following token that starts with `-` is therefore left alone
+    rather than swallowed as the name.
+    """
+    name: str | None = None
+    present = False
+    rest: list[str] = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--cluster":
+            present = True
+            if i + 1 < len(args) and not args[i + 1].startswith("-"):
+                name = args[i + 1]
+                i += 2
+            else:
+                i += 1
+            continue
+        if arg.startswith("--cluster="):
+            present = True
+            name = arg.split("=", 1)[1]
+            i += 1
+            continue
+        rest.append(arg)
+        i += 1
+    return name, present, rest
+
+
+def _local_cluster_refs() -> list[dict]:
+    from kb_core.cluster_ref import load_cluster_refs
+
+    return load_cluster_refs(Path(_KB_CORE_OUT))
+
+
+def _resolve_cluster_graph_or_exit(name: "str | None") -> str:
+    from kb_core.cluster_ref import (
+        resolve_cluster_dir,
+        select_cluster_ref,
+        unresolvable_message,
+    )
+    from kb_core.paths import KB_CORE_OUT_NAME
+    from kb_core.security import sanitize_label
+
+    out_dir = Path(_KB_CORE_OUT)
+    refs = _local_cluster_refs()
+    if not refs:
+        print(
+            "error: this repo is not a member of any cluster. Run "
+            "'kb-core cluster build' from the cluster directory first.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    ref = select_cluster_ref(refs, name)
+    if ref is None:
+        names = ", ".join(
+            sorted(sanitize_label(str(r.get("cluster_name", ""))) for r in refs)
+        )
+        if name:
+            print(
+                f"error: this repo is not a member of cluster "
+                f"'{sanitize_label(name)}'. Member of: {names}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"error: this repo is a member of {len(refs)} clusters ({names}). "
+                f"Re-run with --cluster <NAME>.",
+                file=sys.stderr,
+            )
+        sys.exit(1)
+    member_root = out_dir.parent if out_dir.name == KB_CORE_OUT_NAME else Path(".")
+    cluster_dir = resolve_cluster_dir(ref, member_root)
+    if cluster_dir is None:
+        print(f"error: {unresolvable_message(ref)}", file=sys.stderr)
+        sys.exit(1)
+    graph = cluster_dir / KB_CORE_OUT_NAME / "graph.json"
+    if not graph.is_file():
+        print(
+            f"error: cluster graph not found at {graph}. Run "
+            f"'kb-core cluster build' in {cluster_dir}.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return str(graph)
+
+
+def _parse_graph_selection(args: list[str]) -> "tuple[str, list[str], list[dict]]":
+    """Decide which graph a read-only command reads -> (path, args, hint_refs).
+
+    `--cluster` is consumed here so each command's own flag loop never sees it;
+    `--graph` is left in place because the commands already parse it. The
+    returned refs are the ones worth nudging about — empty unless the command
+    fell back to this repo's own graph, since a caller who named a corpus does
+    not need to be told another one exists.
+    """
+    cluster_name, cluster_flag, rest = _parse_cluster_option(args)
+    has_graph = any(a == "--graph" or a.startswith("--graph=") for a in rest)
+    if cluster_flag and has_graph:
+        print("error: --graph and --cluster are mutually exclusive", file=sys.stderr)
+        sys.exit(1)
+    if cluster_flag:
+        return _resolve_cluster_graph_or_exit(cluster_name), rest, []
+    return _default_graph_path(), rest, ([] if has_graph else _local_cluster_refs())
+
+
+def _maybe_cluster_hint(refs: list[dict]) -> str:
+    """Nudge line for a miss on this repo's own graph, or "" when there is none."""
+    if not refs:
+        return ""
+    from kb_core.cluster_ref import cluster_hint_line
+
+    line = cluster_hint_line(refs)
+    return f"\n{line}" if line else ""
+
+
 def _stamped_manifest_files(
     files_by_type: dict[str, list[str]],
     sem_result: dict,
@@ -715,7 +857,7 @@ def _run_hook_guard(kind: str, strict: bool = False) -> None:
             is_bash_search = any(tok in cmd_str for tok in (
                 "grep", "ripgrep", "rg ", "find ", "fd ", "ack ", "ag "))
             if (is_grep_tool or is_bash_search) and out_path("graph.json").is_file():
-                sys.stdout.write(_SEARCH_NUDGE)
+                sys.stdout.write(_nudge_with_cluster(_SEARCH_NUDGE))
         elif kind == "read":
             vals = [str(t.get("file_path") or ""), str(t.get("pattern") or ""), str(t.get("path") or "")]
             j = " ".join(vals).lower().replace("\\", "/")
@@ -774,7 +916,7 @@ def _run_hook_guard(kind: str, strict: bool = False) -> None:
             except Exception:
                 pass
             if stale:
-                sys.stdout.write(_READ_NUDGE_STALE)
+                sys.stdout.write(_nudge_with_cluster(_READ_NUDGE_STALE))
                 return
             # Strict block: Read tool only, first time per session, not recently
             # oriented, and the file is demonstrably indexed.
@@ -785,7 +927,7 @@ def _run_hook_guard(kind: str, strict: bool = False) -> None:
                     and _mark_session_denied(str(d.get("session_id") or "")):
                 sys.stdout.write(_READ_DENY)
                 return
-            sys.stdout.write(_READ_NUDGE)
+            sys.stdout.write(_nudge_with_cluster(_READ_NUDGE))
     except Exception:
         pass
 
@@ -1049,7 +1191,7 @@ def dispatch_command(cmd: str) -> None:
             sys.exit(1)
     elif cmd == "query":
         if len(sys.argv) < 3:
-            print("Usage: kb-core query \"<question>\" [--dfs] [--context C] [--budget N] [--graph path]", file=sys.stderr)
+            print("Usage: kb-core query \"<question>\" [--dfs] [--context C] [--budget N] [--graph path] [--cluster [NAME]]", file=sys.stderr)
             sys.exit(1)
         from kb_core.serve import _query_graph_text
         from kb_core.security import sanitize_label
@@ -1059,9 +1201,8 @@ def dispatch_command(cmd: str) -> None:
         question = sys.argv[2]
         use_dfs = "--dfs" in sys.argv
         budget = 2000
-        graph_path = _default_graph_path()
         context_filters: list[str] = []
-        args = sys.argv[3:]
+        graph_path, args, cluster_refs = _parse_graph_selection(sys.argv[3:])
         i = 0
         while i < len(args):
             if args[i] == "--budget" and i + 1 < len(args):
@@ -1167,17 +1308,18 @@ def dispatch_command(cmd: str) -> None:
             duration_ms=(_time.perf_counter() - _t0) * 1000,
         )
         _touch_query_stamp(gp)
+        if _result.startswith("No matching nodes found"):
+            _result += _maybe_cluster_hint(cluster_refs)
         print(_result)
     elif cmd == "affected":
         if len(sys.argv) < 3:
-            print("Usage: kb-core affected \"<node-or-label>\" [--relation R] [--depth N] [--graph path]", file=sys.stderr)
+            print("Usage: kb-core affected \"<node-or-label>\" [--relation R] [--depth N] [--graph path] [--cluster [NAME]]", file=sys.stderr)
             sys.exit(1)
         from kb_core.affected import DEFAULT_AFFECTED_RELATIONS, format_affected, load_graph
         query = sys.argv[2]
-        graph_path = _default_graph_path()
         depth = 2
         relations: list[str] = []
-        args = sys.argv[3:]
+        graph_path, args, cluster_refs = _parse_graph_selection(sys.argv[3:])
         i = 0
         while i < len(args):
             if args[i] == "--graph" and i + 1 < len(args):
@@ -1227,15 +1369,16 @@ def dispatch_command(cmd: str) -> None:
         # --graph falls back to its own directory.
         from kb_core.paths import KB_CORE_OUT_NAME
         graph_root = gp.parent.parent if gp.parent.name == KB_CORE_OUT_NAME else gp.parent
-        print(
-            format_affected(
-                graph,
-                query,
-                relations=relations or DEFAULT_AFFECTED_RELATIONS,
-                depth=depth,
-                root=graph_root,
-            )
+        _affected_out = format_affected(
+            graph,
+            query,
+            relations=relations or DEFAULT_AFFECTED_RELATIONS,
+            depth=depth,
+            root=graph_root,
         )
+        if _affected_out.startswith("No unique node match"):
+            _affected_out += _maybe_cluster_hint(cluster_refs)
+        print(_affected_out)
     elif cmd in ("god-nodes", "god_nodes"):
         # god_nodes has long been an analyzer (analyze.py), an MCP tool, and a
         # README-advertised capability, but never a CLI subcommand — `kb_core
@@ -1383,7 +1526,7 @@ def dispatch_command(cmd: str) -> None:
         if len(sys.argv) < 4:
             print(
                 'Usage: kb-core path "<source>" "<target>" [--graph path] '
-                "[--directed|--undirected]",
+                "[--cluster [NAME]] [--directed|--undirected]",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -1393,8 +1536,7 @@ def dispatch_command(cmd: str) -> None:
 
         source_label = sys.argv[2]
         target_label = sys.argv[3]
-        graph_path = _default_graph_path()
-        args = sys.argv[4:]
+        graph_path, args, cluster_refs = _parse_graph_selection(sys.argv[4:])
         direction_flag = None
         for i, a in enumerate(args):
             if a == "--graph" and i + 1 < len(args):
@@ -1440,12 +1582,13 @@ def dispatch_command(cmd: str) -> None:
             G = json_graph.node_link_graph(_raw)
         src_scored = _score_nodes(G, [t.lower() for t in source_label.split()])
         tgt_scored = _score_nodes(G, [t.lower() for t in target_label.split()])
-        if not src_scored:
-            print(f"No node matching '{source_label}' found.", file=sys.stderr)
-            sys.exit(1)
-        if not tgt_scored:
-            print(f"No node matching '{target_label}' found.", file=sys.stderr)
-            sys.exit(1)
+        for _which, _scored in ((source_label, src_scored), (target_label, tgt_scored)):
+            if not _scored:
+                print(
+                    f"No node matching '{_which}' found." + _maybe_cluster_hint(cluster_refs),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
         src_nid = _pick_scored_endpoint(G, src_scored, source_label)
         tgt_nid = _pick_scored_endpoint(G, tgt_scored, target_label)
         # Ambiguity guard: when both queries resolve to the same node, the
@@ -1548,14 +1691,13 @@ def dispatch_command(cmd: str) -> None:
 
     elif cmd == "explain":
         if len(sys.argv) < 3:
-            print('Usage: kb-core explain "<node>" [--graph path]', file=sys.stderr)
+            print('Usage: kb-core explain "<node>" [--graph path] [--cluster [NAME]]', file=sys.stderr)
             sys.exit(1)
         from kb_core.serve import _find_node, find_node_ambiguity
         from networkx.readwrite import json_graph
 
         label = sys.argv[2]
-        graph_path = _default_graph_path()
-        args = sys.argv[3:]
+        graph_path, args, cluster_refs = _parse_graph_selection(sys.argv[3:])
         for i, a in enumerate(args):
             if a == "--graph" and i + 1 < len(args):
                 graph_path = args[i + 1]
@@ -1575,7 +1717,7 @@ def dispatch_command(cmd: str) -> None:
             G = json_graph.node_link_graph(_raw)
         matches = _find_node(G, label)
         if not matches:
-            print(f"No node matching '{label}' found.")
+            print(f"No node matching '{label}' found." + _maybe_cluster_hint(cluster_refs))
             sys.exit(0)
         rivals = find_node_ambiguity(G, label)
         if rivals:
@@ -2936,6 +3078,10 @@ def dispatch_command(cmd: str) -> None:
         result = run_benchmark(graph_path, corpus_words=corpus_words)
         print_benchmark(result)
 
+    elif cmd == "cluster":
+        from kb_core.cluster_cli import cmd_cluster
+
+        cmd_cluster(sys.argv[2:])
     elif cmd == "global":
         subcmd = sys.argv[2] if len(sys.argv) > 2 else ""
         from kb_core.global_graph import (
