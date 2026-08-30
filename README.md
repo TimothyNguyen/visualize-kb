@@ -11,3 +11,7 @@ py -m venv .venv-ui
 Frontend:
 source .venv-core/bin/activate
 py kb-core-ui/dev.py frontend .
+
+## FalkorDB
+
+Optional local FalkorDB development setup: [docs/falkordb-development.md](docs/falkordb-development.md).
