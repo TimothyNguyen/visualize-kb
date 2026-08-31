@@ -13,13 +13,35 @@ export interface WorkspaceSource {
   active_version: string
 }
 
+// One record the normalizer refused, so the operator can see what was dropped
+// instead of silently getting a smaller graph.
+export interface RejectedRecord {
+  record_type: string
+  index: number
+  record_id: string
+  reason: string
+}
+
+export interface IngestionResult {
+  reconcile_status?: string
+  version?: string
+  counts?: { nodes: number; relationships: number; chunks: number; citations: number }
+  rejected?: RejectedRecord[]
+}
+
 export interface IngestionRun {
   id: string
   workspace_id: string
   source_id: string
   status: IngestionStatus
   error: string
-  result: Record<string, unknown>
+  result: IngestionResult
+}
+
+export const TERMINAL_RUN_STATUSES: readonly IngestionStatus[] = ["succeeded", "failed", "cancelled"]
+
+export function isRunTerminal(run: IngestionRun): boolean {
+  return TERMINAL_RUN_STATUSES.includes(run.status)
 }
 
 export interface Workspace {
@@ -76,6 +98,37 @@ export function addWorkspaceSource(
 export function startWorkspaceIngestion(workspaceId: string, sourceId: string): Promise<IngestionRun> {
   return workspaceRequest(
     `/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(sourceId)}/ingestions`,
+    postJson(),
+  )
+}
+
+export function refreshWorkspaceSource(workspaceId: string, sourceId: string): Promise<IngestionRun> {
+  return workspaceRequest(
+    `/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(sourceId)}/refresh`,
+    postJson(),
+  )
+}
+
+export interface SourceDeletion {
+  workspace_id: string
+  source_id: string
+  deleted: boolean
+}
+
+export function removeWorkspaceSource(workspaceId: string, sourceId: string): Promise<SourceDeletion> {
+  return workspaceRequest(
+    `/${encodeURIComponent(workspaceId)}/sources/${encodeURIComponent(sourceId)}`,
+    { method: "DELETE" },
+  )
+}
+
+export function getIngestionRun(workspaceId: string, runId: string): Promise<IngestionRun> {
+  return workspaceRequest(`/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}`)
+}
+
+export function cancelIngestionRun(workspaceId: string, runId: string): Promise<IngestionRun> {
+  return workspaceRequest(
+    `/${encodeURIComponent(workspaceId)}/runs/${encodeURIComponent(runId)}/cancel`,
     postJson(),
   )
 }

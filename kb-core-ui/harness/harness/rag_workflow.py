@@ -68,6 +68,7 @@ REQUIRED_STAGES = (
     "scoped_read",
     "workspace_management",
     "ingestion_coordinator",
+    "ingestion_http_lifecycle",
     "source_delete_isolation",
     "registry_reopen",
     "graph_cleanup",
@@ -1044,6 +1045,127 @@ def execute_rag_workflow(
             "workspace_cleaned": True,
         }
 
+    def ingestion_http_lifecycle_stage() -> dict[str, Any]:
+        """Drives the ingestion surface the browser actually uses: every call
+        here is a real HTTP round trip against the routes the UI client calls,
+        including the poll that tells an operator a run finished."""
+        workspace_id = "rag-ingest-http"
+        repo_dir = work_dir / "ingest-http-repo"
+        (repo_dir / "kb-core-out").mkdir(parents=True, exist_ok=True)
+        graph = json.loads(json.dumps(state["fixture"]["sources"][0]["graph"]))
+        # A dangling edge so the run reports at least one rejected record and
+        # the operator can explain why the graph is smaller than the input.
+        graph.setdefault("links", []).append(
+            {"source": "harness-missing-node", "target": "harness-also-missing", "relation": "CALLS"}
+        )
+        (repo_dir / "kb-core-out" / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
+
+        config = _config(backend)
+
+        def adapter_factory(selected_workspace_id: str):
+            driver = state.get("driver") if backend == "fake" else None
+            return FalkorDBAdapter(config, selected_workspace_id, driver=driver)
+
+        coordinator = IngestionCoordinator(
+            registry,
+            adapter_factory=adapter_factory,
+            embeddings=_HarnessEmbeddings(),
+        )
+        manager = WorkspaceManager(
+            registry,
+            config,
+            adapter_factory=adapter_factory,
+            ingestion_coordinator=coordinator,
+        )
+        store = Store(str(work_dir / "ingest-http.db"))
+        app = Server(store, str(work_dir), workspace_manager=manager)
+        server = _serving(app, "rag-ingestion-http")
+        origin = server.__enter__()
+        base = f"{origin}/api/rag/workspaces"
+
+        def request_json(
+            method: str, url: str, payload: dict[str, Any] | None = None
+        ) -> tuple[int, Any]:
+            body = None if payload is None else json.dumps(payload).encode("utf-8")
+            request = urllib.request.Request(
+                url, data=body, method=method, headers={"Content-Type": "application/json"}
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    return response.status, json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read().decode("utf-8"))
+
+        source_base = f"{base}/{workspace_id}/sources"
+        try:
+            status, _created = request_json(
+                "POST", base, {"id": workspace_id, "name": "Ingestion HTTP"}
+            )
+            if status != 201:
+                raise WorkflowFailure(f"workspace create over HTTP failed: {status}")
+            status, source = request_json(
+                "POST",
+                source_base,
+                {"id": "repo", "kind": "local_repo", "uri": str(repo_dir), "ref": ""},
+            )
+            if status != 201 or source["id"] != "repo":
+                raise WorkflowFailure(f"source create over HTTP failed: {status} {source!r}")
+
+            status, run = request_json("POST", f"{source_base}/repo/ingestions")
+            if status != 202 or run["status"] != "succeeded":
+                raise WorkflowFailure(f"ingestion over HTTP failed: {status} {run!r}")
+            counts = run["result"]["counts"]
+            rejected = run["result"]["rejected"]
+            if counts["nodes"] < 1 or not rejected:
+                raise WorkflowFailure(f"run result lost counts or rejections: {run['result']!r}")
+            if {"record_type", "index", "record_id", "reason"} != set(rejected[0]):
+                raise WorkflowFailure(f"rejection report shape changed: {rejected[0]!r}")
+
+            # The UI polls this route until the run is terminal; it must report
+            # the same outcome the start call returned.
+            status, polled = request_json("GET", f"{base}/{workspace_id}/runs/{run['id']}")
+            if status != 200 or polled["status"] != run["status"]:
+                raise WorkflowFailure(f"run poll disagreed with start: {status} {polled!r}")
+
+            status, refreshed = request_json("POST", f"{source_base}/repo/refresh")
+            if status != 202 or refreshed["status"] != "succeeded" or refreshed["id"] == run["id"]:
+                raise WorkflowFailure(f"refresh over HTTP failed: {status} {refreshed!r}")
+
+            status, stats = request_json("GET", f"{base}/{workspace_id}/stats")
+            if status != 200 or stats["nodes"] != counts["nodes"] or stats["source_ids"] != ["repo"]:
+                raise WorkflowFailure(f"stats after refresh drifted: {status} {stats!r}")
+
+            status, after_delete = request_json("DELETE", f"{source_base}/repo")
+            if status != 200 or not after_delete["deleted"]:
+                raise WorkflowFailure(f"source delete over HTTP failed: {status} {after_delete!r}")
+            status, empty_stats = request_json("GET", f"{base}/{workspace_id}/stats")
+            if status != 200 or empty_stats["nodes"] != 0 or empty_stats["source_ids"]:
+                raise WorkflowFailure(f"deleted source left graph rows: {empty_stats!r}")
+
+            statuses = (
+                request_json("GET", f"{base}/{workspace_id}/runs/nope")[0],
+                request_json("POST", f"{source_base}/nope/ingestions")[0],
+                request_json("POST", f"{base}/nope/sources/repo/ingestions")[0],
+                request_json("POST", source_base, {"id": "bad", "kind": "wat", "uri": "x"})[0],
+            )
+            if statuses != (404, 404, 404, 400):
+                raise WorkflowFailure(f"ingestion error mapping changed: {statuses!r}")
+
+            status, _deleted = request_json("DELETE", f"{base}/{workspace_id}")
+            if status != 200:
+                raise WorkflowFailure(f"workspace delete over HTTP failed: {status}")
+        finally:
+            server.__exit__(None, None, None)
+            store.close()
+        return {
+            "transport": "http",
+            "run_status": "succeeded",
+            "rejected": len(rejected),
+            "nodes": counts["nodes"],
+            "stats_after_delete": 0,
+            "error_statuses": list(statuses),
+        }
+
     def reopen_stage() -> dict[str, Any]:
         reopened = WorkspaceRegistry(str(work_dir / "workspaces.json")).get(state["workspace"].id)
         statuses = {source_id: source.status for source_id, source in reopened.sources.items()}
@@ -1075,6 +1197,7 @@ def execute_rag_workflow(
         ("scoped_read", read_stage),
         ("workspace_management", management_stage),
         ("ingestion_coordinator", coordinator_stage),
+        ("ingestion_http_lifecycle", ingestion_http_lifecycle_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),
         ("graph_cleanup", cleanup_stage),

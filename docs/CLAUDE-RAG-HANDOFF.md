@@ -140,6 +140,39 @@ Left behind on purpose: `kb-core-ui/web/vendor/falkordb-ui-chat-0.1.0.tgz` is
 now unreferenced (T12 moved from `@falkordb/ui-chat` to CopilotKit) and can be
 deleted once nobody wants the build artifact back.
 
+## T13 result (ingestion UI) — done
+
+`/ingest` renders `IngestionView`: workspace selector, graph stats, add-source
+form (`local_repo` / `document_set` only — repo and document URLs are
+POST-HACKATHON per spec b32ccf0), and per-source Ingest / Refresh / Delete. Run
+state shows status, reconcile status, counts, and the rejection report, so a
+graph smaller than its input is explainable. A non-terminal run is polled via
+`GET .../runs/{id}`; the poll effect stops on terminal status and on unmount.
+The coordinator and REST routes were already in place, so this task added no
+backend code.
+
+Two client types were wrong against the live server and are now fixed:
+rejections are `{record_type, index, record_id, reason}` (not
+`source_identity`), and `DELETE .../sources/{id}` answers a
+`{workspace_id, source_id, deleted}` receipt, not a workspace — so the view
+reloads the list after a delete.
+
+Required harness stage `ingestion_http_lifecycle` drives the ingestion surface
+over real loopback HTTP exactly as the browser client does: create workspace,
+add source, ingest (asserting counts plus a forced dangling-edge rejection and
+its field set), poll the run, refresh, stats, delete source, stats back to zero,
+then 404/404/404/400 for unknown run, unknown source, unknown workspace, and bad
+source kind. Required stage count is now 18.
+
+Verification: Python 216 passed; harness 128 passed; fake RAG workflow 18/18;
+pinned `falkordb\falkordb:v4.20.4` workflow 18/18 (the new stage writes and
+deletes real graph rows); web 41 passed; lint exited 0; `tsc -b`, `pnpm build`,
+and `pnpm build:runtime` passed.
+
+`WorkspaceChatView` keeps its own quick add-source and Ingest controls; they are
+chat-scoping conveniences, and the ingestion lifecycle (refresh, delete,
+rejection report, run polling) lives only in `IngestionView`.
+
 ## Non-Negotiable Workflow
 
 For every remaining task:
