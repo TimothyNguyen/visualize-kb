@@ -12,7 +12,11 @@ import time
 from typing import Any, Callable
 
 from kb_core_ui.rag import (
+    AdapterError,
+    ChatRequest,
+    ChatWorkflow,
     DocumentSetIngestor,
+    FakeChatModel,
     FalkorGraphDocumentLoader,
     FalkorVectorBridge,
     FalkorDBAdapter,
@@ -20,6 +24,7 @@ from kb_core_ui.rag import (
     GraphDocumentNode,
     GraphDocumentRelationship,
     HybridRetriever,
+    INSUFFICIENT_EVIDENCE_TEXT,
     RagConfig,
     ReconcileError,
     RetrievalIndexer,
@@ -44,6 +49,7 @@ REQUIRED_STAGES = (
     "idempotent_reconcile",
     "refresh_retry_reconcile",
     "hybrid_retrieval",
+    "langgraph_rag",
     "scoped_read",
     "workspace_management",
     "source_delete_isolation",
@@ -391,6 +397,162 @@ def execute_rag_workflow(
             "source_ids": sorted({hit.source_id for hit in hits}),
         }
 
+    def langgraph_rag_stage() -> dict[str, Any]:
+        assert adapter is not None
+        workspace_id = state["workspace"].id
+        source_ids = tuple(sorted(state["envelopes"]))
+        config = _config(backend)
+
+        class _RejectingCypherAdapter:
+            """Delegates every call to a real adapter; rejects read_query calls
+            containing ``blocked_substring`` before they reach the backend."""
+
+            def __init__(self, inner, blocked_substring: str):
+                self.inner = inner
+                self.blocked_substring = blocked_substring
+                self.blocked_calls = 0
+
+            def __getattr__(self, name):
+                return getattr(self.inner, name)
+
+            def read_query(self, query, params=None):
+                if self.blocked_substring in query:
+                    self.blocked_calls += 1
+                    raise WorkflowFailure("unsafe cypher reached adapter.read_query")
+                return self.inner.read_query(query, params)
+
+        class _GraphExpansionFailingAdapter:
+            """Delegates every call to a real adapter; simulates a FalkorDB
+            failure only for the bounded one-hop expansion query."""
+
+            def __init__(self, inner):
+                self.inner = inner
+
+            def __getattr__(self, name):
+                return getattr(self.inner, name)
+
+            def read_query(self, query, params=None):
+                if "seed:KnowledgeNode" in query:
+                    raise AdapterError("simulated graph query failure")
+                return self.inner.read_query(query, params)
+
+        # 1) Cross-source question returns evidence from allowed sources only.
+        workflow = ChatWorkflow(
+            adapter=adapter,
+            registry=registry,
+            chat_model=FakeChatModel(),
+            embeddings=state["embeddings"],
+            config=config,
+        )
+        cross_source = workflow.ask(
+            ChatRequest(
+                workspace_id=workspace_id,
+                query="graph records",
+                allowed_source_ids=source_ids,
+                query_id="cross-source",
+            )
+        )
+        if cross_source.insufficient_evidence or not cross_source.evidence:
+            raise WorkflowFailure(
+                f"cross-source query returned no evidence: {cross_source.to_json_dict()!r}"
+            )
+        if not all(item["source_id"] in state["envelopes"] for item in cross_source.evidence):
+            raise WorkflowFailure("cross-source evidence escaped allowed sources")
+
+        # 2) A foreign source id supplied by the caller cannot escape scope.
+        foreign_response = workflow.ask(
+            ChatRequest(
+                workspace_id=workspace_id,
+                query="graph records",
+                allowed_source_ids=(*source_ids, "not-a-real-source"),
+                query_id="foreign-source",
+            )
+        )
+        if not any("rejected_source_ids" in err for err in foreign_response.errors):
+            raise WorkflowFailure("foreign source id was not rejected by scope validation")
+        if any(item["source_id"] == "not-a-real-source" for item in foreign_response.evidence):
+            raise WorkflowFailure("foreign source id evidence leaked into response")
+
+        # 3) Empty query path returns an explicit insufficient-evidence answer.
+        empty_response = workflow.ask(
+            ChatRequest(
+                workspace_id=workspace_id,
+                query="",
+                allowed_source_ids=source_ids,
+                query_id="empty-query",
+            )
+        )
+        if not empty_response.insufficient_evidence or empty_response.answer != INSUFFICIENT_EVIDENCE_TEXT:
+            raise WorkflowFailure(
+                f"empty query did not yield insufficient-evidence answer: {empty_response.to_json_dict()!r}"
+            )
+
+        # 4) Deliberately rejected/unsafe generated Cypher never reaches the adapter.
+        spy = _RejectingCypherAdapter(adapter, "DETACH DELETE")
+        unsafe_workflow = ChatWorkflow(
+            adapter=spy,
+            registry=registry,
+            chat_model=FakeChatModel(unsafe_expansion=True),
+            embeddings=state["embeddings"],
+            config=config,
+        )
+        unsafe_response = unsafe_workflow.ask(
+            ChatRequest(
+                workspace_id=workspace_id,
+                query="graph records",
+                allowed_source_ids=source_ids,
+                query_id="unsafe-cypher",
+            )
+        )
+        if spy.blocked_calls:
+            raise WorkflowFailure("unsafe cypher reached adapter.read_query")
+        if not any("rejected_cypher" in err for err in unsafe_response.errors):
+            raise WorkflowFailure("unsafe generated cypher was not rejected by the validator")
+        if not unsafe_response.evidence:
+            raise WorkflowFailure("unsafe-cypher rejection lost surviving vector evidence")
+
+        # 5) Simulated graph-query failure returns a degraded-marked answer
+        #    while vector evidence still exists.
+        failing_workflow = ChatWorkflow(
+            adapter=_GraphExpansionFailingAdapter(adapter),
+            registry=registry,
+            chat_model=FakeChatModel(),
+            embeddings=state["embeddings"],
+            config=config,
+        )
+        degraded_response = failing_workflow.ask(
+            ChatRequest(
+                workspace_id=workspace_id,
+                query="graph records",
+                allowed_source_ids=source_ids,
+                query_id="graph-failure",
+            )
+        )
+        if not degraded_response.degraded:
+            raise WorkflowFailure("simulated graph failure did not mark the response degraded")
+        if not degraded_response.evidence or degraded_response.insufficient_evidence:
+            raise WorkflowFailure("degraded response lost surviving vector evidence")
+
+        # 6) Answer citations all map back to returned evidence (no orphans).
+        evidence_ids = {item["id"] for item in cross_source.evidence}
+        citation_ids = {citation["evidence_id"] for citation in cross_source.citations}
+        if not citation_ids:
+            raise WorkflowFailure("cross-source answer produced no citations")
+        if not citation_ids <= evidence_ids:
+            raise WorkflowFailure(
+                f"citations escaped evidence set: {sorted(citation_ids - evidence_ids)!r}"
+            )
+
+        return {
+            "cross_source_evidence": len(cross_source.evidence),
+            "cross_source_citations": len(cross_source.citations),
+            "foreign_source_rejected": True,
+            "empty_query_insufficient": True,
+            "unsafe_cypher_rejected": True,
+            "graph_failure_degraded": True,
+            "citation_grounding_ok": True,
+        }
+
     def read_stage() -> dict[str, Any]:
         assert adapter is not None
         count, source_ids = _read_counts(adapter)
@@ -473,6 +635,7 @@ def execute_rag_workflow(
         ("idempotent_reconcile", idempotent_stage),
         ("refresh_retry_reconcile", refresh_stage),
         ("hybrid_retrieval", hybrid_stage),
+        ("langgraph_rag", langgraph_rag_stage),
         ("scoped_read", read_stage),
         ("workspace_management", management_stage),
         ("source_delete_isolation", delete_stage),
@@ -516,4 +679,3 @@ def run_rag_workflow(args) -> int:
             shutil.rmtree(temp_root, ignore_errors=True)
     print(json.dumps(report, separators=(",", ":")))
     return 0 if report["status"] == "passed" else 1
-    RetrievalIndexer,

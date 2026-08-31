@@ -13,23 +13,57 @@ is execution context, not replacement spec.
 ## Starting State
 
 - Branch: `rag-chatbot-manager`
-- Handoff base commit: `73ea8a332c84988c2bc77bf48b273eaa540aab70`
-- Completed: T1-T8 and T20
-- Remaining: T9-T19
-- Base implementation test result: Python core `128 passed`
+- Handoff base commit: HEAD of `rag-chatbot-manager` as of this commit (this
+  doc is committed together with the task it describes, so it cannot pin its
+  own SHA — run `git log -1` on this branch for the exact hash)
+- Completed: T1-T9 and T20
+- Remaining: T10-T19
+- Python core test result: `147 passed` (128 base + 19 new T9 workflow tests)
 - Harness test result: `128 passed`
-- Dynamic RAG workflow: all 12 stages pass against fake backend and pinned
-  `falkordb/falkordb:v4.20.4`
+- Dynamic RAG workflow: all 13 stages pass against fake backend and pinned
+  `falkordb/falkordb:v4.20.4` (13th stage: `langgraph_rag`, added by T9)
+- Loop started at: `2026-08-31T03:44:54Z` (wall-clock anchor for the 5-hour
+  budget proxy; set once, never overwritten)
+- Next action: start T10 (workspace-scoped chat persistence) — read T10's
+  deliverables below, write failing persistence contract tests first
 
 Relevant commits:
 
 ```text
+<T9 commit, see git log -1> T9: Add LangGraph RAG workflow
 73ea8a3 feat(rag): add workspace management surface
 2a7edfa T7: Add hybrid FalkorDB retrieval indexes
 44813e7 T6: Add repo and document ingestion
 750615d T5: Add idempotent source reconciler
 a4810db T20: Add dynamic RAG harness
 ```
+
+## T9 result (LangGraph RAG workflow) — done
+
+New module `kb-core-ui/python/kb_core_ui/rag/workflow.py`: `ChatWorkflow`
+(7 LangGraph nodes: scope_validation, hybrid_retrieval, entity_expansion,
+graph_query, evidence_ranking, answer_synthesis, citation_validation),
+`RetrievalLimits` (request limits always narrow, never widen, server config —
+V7), `validate_generated_cypher` (allowlist validator for LLM-proposed
+expansion Cypher — labels/relationships/properties/parameters/required
+`LIMIT $limit`, layered on top of the existing `validate_read_only_cypher`),
+`ChatModel` protocol + `FakeChatModel` (no external API key needed),
+`GraphReadAdapter` protocol (graph_query node uses only
+`FalkorDBAdapter.read_query`, no second DB client). New harness stage
+`langgraph_rag` (13th required stage) proves: cross-source evidence stays
+within allowed sources, a foreign source id can't escape scope, an empty
+query yields an explicit insufficient-evidence answer, unsafe generated
+Cypher never reaches `read_query`, a simulated graph-query failure yields a
+degraded answer with surviving vector evidence, and citations never
+reference unreturned evidence. `langgraph>=1.2,<2` added to the optional
+`rag` dependency group in `kb-core-ui/python/pyproject.toml` (pinned
+1.2.11 in the `.venv-ui` environment).
+
+Known scope note carried forward, not a bug: `max_answer_tokens` is stored in
+config and threaded through `RetrievalLimits` but not yet enforced by
+truncation logic — `FakeChatModel` output is naturally short so this wasn't
+exercised. Enforce it when a real (non-fake) `ChatModel` provider is wired in
+(T10+ territory, not required by T9's deliverable list).
 
 ## Non-Negotiable Workflow
 

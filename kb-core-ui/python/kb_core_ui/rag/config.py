@@ -45,6 +45,11 @@ class RagConfig:
     embedding_model: str = ""
     max_context: int = 16_000
     query_timeout_seconds: int = 15
+    max_hybrid_k: int = 10
+    max_graph_traversal_seeds: int = 3
+    max_graph_row_limit: int = 25
+    max_answer_tokens: int = 800
+    max_provider_retries: int = 2
     errors: tuple[str, ...] = ()
 
     @classmethod
@@ -61,6 +66,24 @@ class RagConfig:
             15,
             errors,
         )
+        max_hybrid_k = _positive_int(
+            environ.get("RAG_MAX_HYBRID_K", "10"), "RAG_MAX_HYBRID_K", 10, errors
+        )
+        max_graph_traversal_seeds = _positive_int(
+            environ.get("RAG_MAX_GRAPH_TRAVERSAL_SEEDS", "3"),
+            "RAG_MAX_GRAPH_TRAVERSAL_SEEDS",
+            3,
+            errors,
+        )
+        max_graph_row_limit = _positive_int(
+            environ.get("RAG_MAX_GRAPH_ROW_LIMIT", "25"), "RAG_MAX_GRAPH_ROW_LIMIT", 25, errors
+        )
+        max_answer_tokens = _positive_int(
+            environ.get("RAG_MAX_ANSWER_TOKENS", "800"), "RAG_MAX_ANSWER_TOKENS", 800, errors
+        )
+        max_provider_retries = _positive_int(
+            environ.get("RAG_MAX_PROVIDER_RETRIES", "2"), "RAG_MAX_PROVIDER_RETRIES", 2, errors
+        )
         return cls(
             enabled=enabled,
             falkordb_url=environ.get("FALKORDB_URL", "").strip(),
@@ -72,6 +95,11 @@ class RagConfig:
             embedding_model=environ.get("RAG_EMBEDDING_MODEL", "").strip(),
             max_context=max_context,
             query_timeout_seconds=timeout,
+            max_hybrid_k=max_hybrid_k,
+            max_graph_traversal_seeds=max_graph_traversal_seeds,
+            max_graph_row_limit=max_graph_row_limit,
+            max_answer_tokens=max_answer_tokens,
+            max_provider_retries=max_provider_retries,
             errors=tuple(errors),
         )
 
@@ -114,5 +142,10 @@ class RagConfig:
             "embeddingModel": self.embedding_model,
             "maxContext": self.max_context,
             "queryTimeoutSeconds": self.query_timeout_seconds,
+            "maxHybridK": self.max_hybrid_k,
+            "maxGraphTraversalSeeds": self.max_graph_traversal_seeds,
+            "maxGraphRowLimit": self.max_graph_row_limit,
+            "maxAnswerTokens": self.max_answer_tokens,
+            "maxProviderRetries": self.max_provider_retries,
             "errors": list(self.readiness_errors()),
         }

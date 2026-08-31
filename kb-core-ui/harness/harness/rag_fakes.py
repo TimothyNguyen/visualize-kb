@@ -203,6 +203,8 @@ class InMemoryGraph:
 
     def ro_query(self, query: str, params: Mapping[str, object] | None = None, timeout=None):
         values = dict(params or {})
+        if "MATCH (seed:KnowledgeNode" in query:
+            return FakeResult(self._one_hop_expansion(values))
         if "MATCH (m:SourceManifest" in query:
             manifest = self.manifests.get(str(values["source_id"]))
             if manifest is None:
@@ -251,6 +253,37 @@ class InMemoryGraph:
                 ]
             )
         raise RuntimeError(f"fake does not implement read query: {query}")
+
+    def _one_hop_expansion(self, values: Mapping[str, object]) -> list[list[Any]]:
+        """Model the workflow's fixed one-hop KnowledgeNode expansion query:
+        seed ids -> RELATED neighbors, scoped to this workspace, LIMIT-bounded.
+        """
+
+        seed_ids = set(values.get("seed_ids", []))
+        neighbor_ids: set[str] = set()
+        for relationship in self.relationships.values():
+            if relationship.get("workspace_id") != values["workspace_id"]:
+                continue
+            if not relationship.get("active", True):
+                continue
+            source = relationship.get("source")
+            target = relationship.get("target")
+            if source in seed_ids and target is not None:
+                neighbor_ids.add(str(target))
+            if target in seed_ids and source is not None:
+                neighbor_ids.add(str(source))
+        neighbors = [
+            row
+            for row in self.nodes.values()
+            if row.get("id") in neighbor_ids
+            and row.get("workspace_id") == values["workspace_id"]
+            and row.get("active", True)
+        ]
+        neighbors.sort(key=lambda row: str(row["id"]))
+        return [
+            [row["id"], row["source_id"], row["label"], row["text"], row["source_location"]]
+            for row in neighbors[: int(values["limit"])]
+        ]
 
     @staticmethod
     def _matches(
