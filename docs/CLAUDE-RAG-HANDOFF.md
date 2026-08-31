@@ -250,6 +250,42 @@ pinned `falkordb/falkordb:v4.20.4` workflow 20/20; `docker compose config`
 clean; web 57 passed; lint exited 0; `tsc -b`, `pnpm build`, and
 `pnpm build:runtime` passed.
 
+## T16 result (MVP test sweep) — done
+
+A coverage audit came first, because most of T16's list already had owners:
+Cypher rejection, empty and degraded mode, SSE and AG-UI cancel, citation
+mapping, React chat behavior, and the ingestion lifecycle are each covered by
+existing unit suites (`python/tests/test_rag_*.py`, `test_falkordb_adapter.py`,
+and the web `*.test.tsx` files). Two gaps were real, and only those were filled.
+
+`python/tests/test_rag_mvp_isolation.py` composes the boundaries the unit
+suites prove separately: two live workspaces sharing one `Server`, one
+`ChatManager`, and one chat history backend, driven over HTTP. It asserts an
+answer carries only its own workspace's evidence, a foreign `source_id` is
+rejected rather than queried, a `query_id` cannot be read from another
+workspace's `source_map` or `explain_graph`, the same `thread_id` in two
+workspaces keeps two histories that delete independently, and an unknown
+workspace is refused before any retrieval. The last test is V13 as a Python
+regression rather than only a harness stage: with no workspace manager, no chat
+manager, and no FalkorDB configuration, `/api/graph`, `/api/tree`, `/api/stats`,
+and `/api/search` still answer 200 while every RAG route answers 404. That
+server is built without `web_dir` on purpose -- the SPA fallback would answer
+200 for a route that does not exist and hide the very thing the test asserts.
+
+The `mvp_isolation_sweep` harness stage runs the same shape against real
+ingestion instead of a scoped fake: it ingests one fixture repo per tenant into
+`mvp-alpha` and `mvp-beta` through `WorkspaceManager` and
+`IngestionCoordinator`, then over HTTP checks evidence scoping, foreign-source
+rejection, cross-workspace `query_id` reads, per-workspace threads under one
+shared thread id, a foreign `focus` identity resolving to nothing in
+`/context`, and that deleting the alpha workspace leaves beta's node count
+untouched while alpha's chat route starts answering 404. `REQUIRED_STAGES` is
+now 21 entries.
+
+Verification: Python 231 passed; harness 128 passed; fake RAG workflow 21/21;
+pinned `falkordb/falkordb:v4.20.4` workflow 21/21; web 57 passed; oxlint exited
+0; `tsc -b`, `pnpm build`, and `pnpm build:runtime` passed.
+
 ## Non-Negotiable Workflow
 
 For every remaining task:

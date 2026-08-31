@@ -75,6 +75,7 @@ REQUIRED_STAGES = (
     "ingestion_http_lifecycle",
     "graph_explorer_compatibility",
     "dev_stack_seed",
+    "mvp_isolation_sweep",
     "source_delete_isolation",
     "registry_reopen",
     "graph_cleanup",
@@ -1479,6 +1480,202 @@ def execute_rag_workflow(
             "reset_nodes": rebuilt["nodes"],
         }
 
+    def mvp_isolation_sweep_stage() -> dict[str, Any]:
+        """Two live workspaces on one server: ingestion, chat, history, context
+        and deletion all have to stay inside the workspace that owns them."""
+
+        config = _config(backend)
+        sweep_registry = WorkspaceRegistry(str(work_dir / "mvp-workspaces.json"))
+
+        def adapter_factory(selected_workspace_id: str):
+            driver = state.get("driver") if backend == "fake" else None
+            return FalkorDBAdapter(config, selected_workspace_id, driver=driver)
+
+        manager = WorkspaceManager(
+            sweep_registry,
+            config,
+            adapter_factory=adapter_factory,
+            ingestion_coordinator=IngestionCoordinator(
+                sweep_registry, adapter_factory=adapter_factory, embeddings=_HarnessEmbeddings()
+            ),
+        )
+        chat = ChatManager(
+            sweep_registry,
+            config,
+            adapter_factory=adapter_factory,
+            embeddings=state["embeddings"],
+            sleep=lambda _seconds: None,
+        )
+
+        tenants = {}
+        for tenant in ("alpha", "beta"):
+            source_dir = work_dir / f"mvp-{tenant}"
+            source_dir.mkdir(parents=True, exist_ok=True)
+            (source_dir / "graph.json").write_text(
+                json.dumps(
+                    {
+                        "nodes": [
+                            {
+                                "id": f"{tenant}/store.py:Store",
+                                "label": f"{tenant.capitalize()}Store",
+                                "file_type": "code",
+                                "source_location": f"{tenant}/store.py:L1",
+                                "doc": f"{tenant} owns these graph records.",
+                                "_origin": "ast",
+                            },
+                            {
+                                "id": f"{tenant}/api.py:Api",
+                                "label": f"{tenant.capitalize()}Api",
+                                "file_type": "code",
+                                "source_location": f"{tenant}/api.py:L1",
+                                "doc": f"{tenant} serves these graph records.",
+                                "_origin": "ast",
+                            },
+                        ],
+                        "links": [
+                            {
+                                "source": f"{tenant}/api.py:Api",
+                                "target": f"{tenant}/store.py:Store",
+                                "relation": "calls",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            workspace_id = f"mvp-{tenant}"
+            source_id = f"{tenant}-repo"
+            manager.create_workspace(workspace_id, f"MVP {tenant}")
+            manager.add_source(workspace_id, source_id, "local_repo", str(source_dir))
+            run = manager.start_ingestion(workspace_id, source_id)
+            if run["status"] != "succeeded":
+                raise WorkflowFailure(f"{workspace_id} ingestion failed: {run!r}")
+            tenants[tenant] = {"workspace_id": workspace_id, "source_id": source_id}
+
+        alpha, beta = tenants["alpha"], tenants["beta"]
+        store = Store(str(work_dir / "mvp-isolation.db"))
+        app = Server(store, str(work_dir), workspace_manager=manager, chat_manager=chat)
+
+        def call(method: str, url: str, payload: dict[str, Any] | None = None):
+            body = None if payload is None else json.dumps(payload).encode("utf-8")
+            request = urllib.request.Request(
+                url, data=body, method=method, headers={"Content-Type": "application/json"}
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    return response.status, json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read().decode("utf-8"))
+
+        try:
+            with _serving(app, "rag-mvp-isolation") as origin:
+                def chat_url(workspace_id: str, leaf: str = "") -> str:
+                    return f"{origin}/api/rag/workspaces/{workspace_id}/chat{leaf}"
+
+                status, beta_answer = call(
+                    "POST",
+                    chat_url(beta["workspace_id"]),
+                    {"query": "graph records", "thread_id": "shared", "query_id": "mvp-beta"},
+                )
+                if status != 200 or not beta_answer["context"]:
+                    raise WorkflowFailure(f"beta answered nothing: {status} {beta_answer!r}")
+                foreign = [
+                    item
+                    for item in beta_answer["context"]
+                    if item["source_id"] != beta["source_id"]
+                    or item["source_location"].startswith("alpha/")
+                ]
+                if foreign:
+                    raise WorkflowFailure(f"beta answer carried alpha evidence: {foreign!r}")
+
+                status, scoped = call(
+                    "POST",
+                    chat_url(beta["workspace_id"]),
+                    {
+                        "query": "graph records",
+                        "allowed_source_ids": [alpha["source_id"]],
+                        "query_id": "mvp-beta-foreign",
+                    },
+                )
+                if status != 200 or not any(
+                    "rejected_source_ids" in error for error in scoped["errors"]
+                ):
+                    raise WorkflowFailure(f"foreign source id was not rejected: {scoped!r}")
+                if any(item["source_id"] == alpha["source_id"] for item in scoped["context"]):
+                    raise WorkflowFailure(f"foreign source id still returned evidence: {scoped!r}")
+
+                status, alpha_answer = call(
+                    "POST",
+                    chat_url(alpha["workspace_id"]),
+                    {"query": "graph records", "thread_id": "shared", "query_id": "mvp-alpha"},
+                )
+                if status != 200 or not alpha_answer["context"]:
+                    raise WorkflowFailure(f"alpha answered nothing: {status} {alpha_answer!r}")
+
+                query_id = alpha_answer["query_id"]
+                own = call("GET", chat_url(alpha["workspace_id"], f"/source_map?query_id={query_id}"))
+                stolen = call("GET", chat_url(beta["workspace_id"], f"/source_map?query_id={query_id}"))
+                explained = call(
+                    "GET", chat_url(beta["workspace_id"], f"/explain_graph?query_id={query_id}")
+                )
+                if own[0] != 200 or stolen[0] != 404 or explained[0] != 404:
+                    raise WorkflowFailure(
+                        f"query id crossed workspaces: {own[0]} {stolen[0]} {explained[0]}"
+                    )
+
+                threads = {
+                    tenant: call("GET", chat_url(values["workspace_id"], "/threads/shared"))[1]
+                    for tenant, values in tenants.items()
+                }
+                def replayed(tenant: str) -> list[str]:
+                    return [
+                        f"{turn['workspace_id']}:{turn['response']['query_id']}"
+                        for turn in threads[tenant]["turns"]
+                    ]
+
+                if replayed("alpha") != ["mvp-alpha:mvp-alpha"]:
+                    raise WorkflowFailure(f"alpha thread is not its own: {threads['alpha']!r}")
+                if replayed("beta") != ["mvp-beta:mvp-beta"]:
+                    raise WorkflowFailure(f"beta thread is not its own: {threads['beta']!r}")
+
+                if call("DELETE", chat_url(alpha["workspace_id"], "/threads/shared"))[0] != 200:
+                    raise WorkflowFailure("deleting alpha's thread failed")
+                surviving = call("GET", chat_url(beta["workspace_id"], "/threads/shared"))[1]
+                if not surviving["turns"]:
+                    raise WorkflowFailure("deleting alpha's thread emptied beta's")
+
+                alpha_identity = "alpha/store.py:Store"
+                context_url = (
+                    f"{origin}/api/rag/workspaces/{beta['workspace_id']}/context"
+                    f"?focus={urllib.parse.quote(alpha_identity, safe='')}"
+                )
+                status, borrowed = call("GET", context_url)
+                if status != 200 or borrowed["records"] or borrowed["edges"]:
+                    raise WorkflowFailure(f"alpha identity resolved inside beta: {borrowed!r}")
+
+                before = call("GET", f"{origin}/api/rag/workspaces/{beta['workspace_id']}/stats")[1]
+                manager.delete_workspace(alpha["workspace_id"])
+                after = call("GET", f"{origin}/api/rag/workspaces/{beta['workspace_id']}/stats")[1]
+                if after["nodes"] != before["nodes"] or after["nodes"] < 1:
+                    raise WorkflowFailure(f"deleting alpha changed beta: {before!r} -> {after!r}")
+                if call("POST", chat_url(alpha["workspace_id"]), {"query": "graph records"})[0] != 404:
+                    raise WorkflowFailure("deleted workspace still answers chat")
+
+                manager.delete_workspace(beta["workspace_id"])
+        finally:
+            store.close()
+
+        return {
+            "transport": "http",
+            "workspaces": [alpha["workspace_id"], beta["workspace_id"]],
+            "beta_evidence": len(beta_answer["context"]),
+            "foreign_source_rejected": True,
+            "foreign_query_id_status": 404,
+            "thread_turns": {tenant: len(value["turns"]) for tenant, value in threads.items()},
+            "foreign_focus_records": len(borrowed["records"]),
+            "beta_nodes_after_alpha_delete": after["nodes"],
+        }
+
     def reopen_stage() -> dict[str, Any]:
         reopened = WorkspaceRegistry(str(work_dir / "workspaces.json")).get(state["workspace"].id)
         statuses = {source_id: source.status for source_id, source in reopened.sources.items()}
@@ -1513,6 +1710,7 @@ def execute_rag_workflow(
         ("ingestion_http_lifecycle", ingestion_http_lifecycle_stage),
         ("graph_explorer_compatibility", graph_explorer_compatibility_stage),
         ("dev_stack_seed", dev_stack_seed_stage),
+        ("mvp_isolation_sweep", mvp_isolation_sweep_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),
         ("graph_cleanup", cleanup_stage),
