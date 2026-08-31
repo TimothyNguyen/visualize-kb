@@ -1,0 +1,62 @@
+name: Dynamic RAG Harness
+
+on:
+  push:
+    branches: [main, master, rag-chatbot-manager]
+  pull_request:
+
+jobs:
+  fake-backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kb-core-ui/harness
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e ../python -e ".[dev]"
+      - run: python -m pytest -q tests/test_rag_workflow.py
+      - run: python -m harness rag --backend fake --report .harness-work/rag/fake.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rag-harness-fake-report
+          path: kb-core-ui/harness/.harness-work/rag/fake.json
+
+  falkordb-backend:
+    runs-on: ubuntu-latest
+    services:
+      falkordb:
+        image: falkordb/falkordb:v4.20.4
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: kb-core-ui/harness
+    env:
+      RAG_ENABLE: "true"
+      FALKORDB_URL: falkor://127.0.0.1:6379
+      RAG_LLM_PROVIDER: harness-fake
+      RAG_LLM_MODEL: harness-fake
+      RAG_EMBEDDING_MODEL: harness-fake
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e "../python[rag]" -e ".[dev]"
+      - run: python -m harness rag --backend falkordb --report .harness-work/rag/falkordb.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rag-harness-falkordb-report
+          path: kb-core-ui/harness/.harness-work/rag/falkordb.json

@@ -33,6 +33,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_report.add_argument("--in", dest="in_path", required=True)
     p_report.add_argument("--format", choices=["text", "json"], default="text")
 
+    p_rag = sub.add_parser("rag", help="run dynamic workspace GraphRAG workflow")
+    p_rag.add_argument("--backend", choices=["fake", "falkordb"], default="fake")
+    p_rag.add_argument("--fixture", default="tests/fixtures/rag-workflow/sources.json")
+    p_rag.add_argument("--report", default=".harness-work/rag/report.json")
+    p_rag.add_argument("--keep-work-dir", action="store_true")
+
     return parser
 
 
@@ -56,6 +62,10 @@ def main(argv: list[str] | None = None) -> int:
         from harness.modes.report_cmd import run_report
 
         return run_report(args)
+    if args.mode == "rag":
+        from harness.rag_workflow import run_rag_workflow
+
+        return run_rag_workflow(args)
 
     parser.error(f"unknown mode {args.mode}")
     return 2

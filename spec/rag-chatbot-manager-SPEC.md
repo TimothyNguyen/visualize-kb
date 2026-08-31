@@ -56,6 +56,8 @@ I.falkor_ui. `https://github.com/FalkorDB/falkordb-ui` — reference UI package:
 
 I.config. `FALKORDB_URL`, `FALKORDB_USERNAME`, `FALKORDB_PASSWORD`, `FALKORDB_SSL`, `RAG_LLM_PROVIDER`, `RAG_LLM_MODEL`, `RAG_EMBEDDING_MODEL`, `RAG_MAX_CONTEXT`, and `RAG_ENABLE` — server-only configuration; secrets never enter frontend bundle.
 
+I.harness. `kb-core-ui/harness/harness/rag_workflow.py`, `python -m harness rag`, and `.github/workflows/rag-harness.yml` — dynamic composition gate; fake backend always, pinned FalkorDB service when DB behavior changes.
+
 ## §V
 
 V1. Normalizer accepts current NetworkX `nodes` + `links` and legacy `edges`; output uses one versioned envelope with stable IDs, source ownership, node/edge type, text, and source location.
@@ -88,6 +90,8 @@ V14. RAG contract tests pass against fake adapter; integration tests pass agains
 
 V15. Metrics expose ingestion run state, files/chunks/nodes/edges, rejected records, embedding failures, retrieval latency, graph query latency, LLM latency, token usage, stream cancellation, and degraded responses without logging secrets or source content by default.
 
+V16. No task becomes `x` from isolated unit tests alone. Each task adds/updates a dynamic harness stage that composes its real boundaries. Default CI runs deterministic fake LLM/embedding/provider dependencies; FalkorDB-touching tasks also pass against pinned FalkorDB service. Harness emits machine-readable stage report and fails on skipped required stage.
+
 ## §T
 
 |id|status|task|cites|
@@ -96,25 +100,26 @@ V15. Metrics expose ingestion run state, files/chunks/nodes/edges, rejected reco
 |T2|x|Define workspace/source/run persistence model, IDs, lifecycle, graph-name derivation, source ownership, status states, and config validation. Keep local default path unchanged.|C1,C3,C6,C12,V6,I.config|
 |T3|x|Add JSON normalizer + validator: schema version, deterministic IDs, source metadata, edge endpoint checks, size limits, rejection report, and golden fixtures for repo/docs/cross-repo inputs.|V1,V2,V3,V4|
 |T4|x|Build FalkorDB adapter with connection health, graph lifecycle, parameterized upsert/delete, read-only query mode, retries, timeouts, and local/Cloud configuration.|C3,C6,C8,C12,V4,V6,I.config|
-|T5|.|Implement idempotent source reconciler: manifest/hash check, transactional staging, source-owned stale deletion, retry convergence, publish marker, and rollback/recovery handling.|C4,C5,V4,V5|
-|T6|.|Implement repo ingestion from KB Core JSON and document ingestion using GraphRAG-SDK-compatible loaders/chunking/entity-relation extraction. Emit same normalized envelope for both.|C1,C2,V1,V3,I.extract,I.falkor|
-|T7|.|Load `GraphDocument`-equivalent facts through `FalkorDBGraph`; create versioned full-text/vector indexes; embed chunk text and selected graph properties through `FalkorDBVector` hybrid search.|C2,C7,V3,V7,I.falkor_blog|
-|T8|.|Add workspace CLI/API: list/create/delete workspace, add/remove/refresh sources, start/cancel ingestion, run status, health, stats, and bounded graph/subgraph context.|C1,C3,C5,V4,V6,I.server,I.cli|
-|T9|.|Build LangGraph RAG workflow: scope validation -> hybrid retrieval -> entity expansion -> safe read-only graph query -> evidence ranking -> answer/citations; add retry and empty-result branches.|C7,C8,C9,V7,V8,I.falkor_blog|
-|T10|.|Persist thread history/checkpoints with workspace-scoped FalkorDB saver or chat history adapter; define retention and cleanup; never persist provider secrets.|C3,C9,C11,V11,I.falkor_blog|
-|T11|.|Define REST + SSE contract for chat, suggestions, feedback, context, source map, graph explanation, errors, cancellation, and degraded mode. Add contract fixtures.|C9,C11,V9,V10,I.server,I.client,I.falkor_ui|
-|T12|.|Integrate `@falkordb/ui-chat`: custom element typings, `/chat` route, workspace selector, strategy options (`auto`, `local`, `multi_path`), suggestions, SSE accumulation, abort handling, feedback, sources, and entity/source click navigation.|C10,C11,V9,V10,V12,I.client,I.routes,I.falkor_ui|
-|T13|.|Add ingestion UI: source add form, repo branch/commit fields, document upload/URL, progress/state, rejection report, refresh/delete controls, and workspace graph stats.|C1,C5,V4,V5,I.routes,I.client|
-|T14|.|Keep existing graph explorer compatible: selected workspace can open graph overview/subgraph, citation can focus symbol/file, static `graph.json` path still works with `RAG_ENABLE=false`.|C10,V12,V13,I.graph_json,I.routes|
-|T15|.|Add auth boundary hook and tenant policy interface before shared deployment: workspace authorization callback, server-side scope checks, CORS/origin policy, rate limits, body/upload limits, provider secret redaction, audit events.|C3,C6,C8,V6,V15,I.server|
-|T16|.|Add tests: normalizer goldens, duplicate/retry/delete reconciliation, cross-source and cross-repo retrieval, workspace isolation, Cypher validator, empty/degraded mode, SSE cancel, React chat behavior, and existing regression suite.|V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14|
-|T17|.|Add Docker Compose dev stack with pinned FalkorDB version, seeded fixture workspace, mocked LLM mode, health checks, migration/reset docs, and optional provider setup.|C12,V14,I.falkor_blog,I.config|
-|T18|.|Add observability and performance gates: fixture budgets for ingestion, hybrid retrieval, graph expansion, first token, complete answer, memory growth, and concurrent workspace isolation. Record baseline before rollout.|V7,V14,V15|
-|T19|.|Document threat model, data flow, provider retention assumptions, prompt-injection handling, source trust labels, backup/restore, graph reset, upgrade, and rollback procedures.|C8,C9,V3,V6,V8,V15|
+|T5|.|Implement idempotent source reconciler: manifest/hash check, transactional staging, source-owned stale deletion, retry convergence, publish marker, and rollback/recovery handling.|C4,C5,V4,V5,V16,I.harness|
+|T6|.|Implement repo ingestion from KB Core JSON and document ingestion using GraphRAG-SDK-compatible loaders/chunking/entity-relation extraction. Emit same normalized envelope for both.|C1,C2,V1,V3,V16,I.extract,I.falkor,I.harness|
+|T7|.|Load `GraphDocument`-equivalent facts through `FalkorDBGraph`; create versioned full-text/vector indexes; embed chunk text and selected graph properties through `FalkorDBVector` hybrid search.|C2,C7,V3,V7,V16,I.falkor_blog,I.harness|
+|T8|.|Add workspace CLI/API: list/create/delete workspace, add/remove/refresh sources, start/cancel ingestion, run status, health, stats, and bounded graph/subgraph context.|C1,C3,C5,V4,V6,V16,I.server,I.cli,I.harness|
+|T9|.|Build LangGraph RAG workflow: scope validation -> hybrid retrieval -> entity expansion -> safe read-only graph query -> evidence ranking -> answer/citations; add retry and empty-result branches.|C7,C8,C9,V7,V8,V16,I.falkor_blog,I.harness|
+|T10|.|Persist thread history/checkpoints with workspace-scoped FalkorDB saver or chat history adapter; define retention and cleanup; never persist provider secrets.|C3,C9,C11,V11,V16,I.falkor_blog,I.harness|
+|T11|.|Define REST + SSE contract for chat, suggestions, feedback, context, source map, graph explanation, errors, cancellation, and degraded mode. Add contract fixtures.|C9,C11,V9,V10,V16,I.server,I.client,I.falkor_ui,I.harness|
+|T12|.|Integrate `@falkordb/ui-chat`: custom element typings, `/chat` route, workspace selector, strategy options (`auto`, `local`, `multi_path`), suggestions, SSE accumulation, abort handling, feedback, sources, and entity/source click navigation.|C10,C11,V9,V10,V12,V16,I.client,I.routes,I.falkor_ui,I.harness|
+|T13|.|Add ingestion UI: source add form, repo branch/commit fields, document upload/URL, progress/state, rejection report, refresh/delete controls, and workspace graph stats.|C1,C5,V4,V5,V16,I.routes,I.client,I.harness|
+|T14|.|Keep existing graph explorer compatible: selected workspace can open graph overview/subgraph, citation can focus symbol/file, static `graph.json` path still works with `RAG_ENABLE=false`.|C10,V12,V13,V16,I.graph_json,I.routes,I.harness|
+|T15|.|Add auth boundary hook and tenant policy interface before shared deployment: workspace authorization callback, server-side scope checks, CORS/origin policy, rate limits, body/upload limits, provider secret redaction, audit events.|C3,C6,C8,V6,V15,V16,I.server,I.harness|
+|T16|.|Add tests: normalizer goldens, duplicate/retry/delete reconciliation, cross-source and cross-repo retrieval, workspace isolation, Cypher validator, empty/degraded mode, SSE cancel, React chat behavior, and existing regression suite.|V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14,V16,I.harness|
+|T17|.|Add Docker Compose dev stack with pinned FalkorDB version, seeded fixture workspace, mocked LLM mode, health checks, migration/reset docs, and optional provider setup.|C12,V14,V16,I.falkor_blog,I.config,I.harness|
+|T18|.|Add observability and performance gates: fixture budgets for ingestion, hybrid retrieval, graph expansion, first token, complete answer, memory growth, and concurrent workspace isolation. Record baseline before rollout.|V7,V14,V15,V16,I.harness|
+|T19|.|Document threat model, data flow, provider retention assumptions, prompt-injection handling, source trust labels, backup/restore, graph reset, upgrade, and rollback procedures.|C8,C9,V3,V6,V8,V15,V16,I.harness|
+|T20|x|Build dynamic RAG harness and CI workflow. Replay T1-T4 as one workspace -> normalize -> validate -> FalkorDB upsert/read/delete scenario; emit JSON report; require fake and pinned-service modes.|V14,V16,I.harness,I.config|
 
 ## §B
 
 |id|date|cause|fix|
 |---|---|---|---|
 
-Recommended order: T1 -> T2 -> T3+T4 -> T5+T6 -> T7 -> T8 -> T9+T10+T11 -> T12+T13+T14 -> T15+T16 -> T17+T18+T19.
+Recommended order: T1 -> T2 -> T3+T4 -> T20 -> T5+T6 -> T7 -> T8 -> T9+T10+T11 -> T12+T13+T14 -> T15+T16 -> T17+T18+T19.

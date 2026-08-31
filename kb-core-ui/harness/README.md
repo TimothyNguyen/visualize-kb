@@ -38,3 +38,22 @@ types and error messages can differ. Every run isolates roots and databases.
 
 The active CI workflow is `../../.github/workflows/parity.yml`. The nested
 `../.github/workflows/` bot examples remain inactive.
+
+## Dynamic RAG workflow
+
+Replay workspace creation, graph normalization, FalkorDB upsert/read/delete,
+registry persistence, and graph cleanup as one required-stage workflow:
+
+```
+python -m harness rag --backend fake
+```
+
+Run same workflow against FalkorDB on `127.0.0.1:6379`:
+
+```
+RAG_ENABLE=true FALKORDB_URL=falkor://127.0.0.1:6379 python -m harness rag --backend falkordb
+```
+
+Both modes write machine-readable `kb-core.rag-harness.v1` reports. CI runs
+fake mode plus pinned `falkordb/falkordb:v4.20.4` service mode in
+`../../.github/workflows/rag-harness.yml`.

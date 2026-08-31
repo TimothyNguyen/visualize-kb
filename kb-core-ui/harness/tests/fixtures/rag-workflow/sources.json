@@ -1,0 +1,81 @@
+{
+  "workspace_id": "rag-harness",
+  "workspace_name": "RAG Harness",
+  "sources": [
+    {
+      "id": "repo",
+      "kind": "local_repo",
+      "uri": "fixture://repo",
+      "graph": {
+        "nodes": [
+          {
+            "id": "src/api.py:Api",
+            "label": "Api",
+            "file_type": "code",
+            "source_location": "src/api.py:L1",
+            "doc": "API entrypoint.",
+            "_origin": "ast"
+          },
+          {
+            "id": "src/store.py:Store",
+            "label": "Store",
+            "file_type": "code",
+            "source_location": "src/store.py:L1",
+            "doc": "Persists graph records.",
+            "_origin": "ast"
+          }
+        ],
+        "links": [
+          {
+            "source": "src/api.py:Api",
+            "target": "src/store.py:Store",
+            "relation": "calls"
+          },
+          {
+            "source": "missing",
+            "target": "src/store.py:Store",
+            "relation": "calls"
+          }
+        ]
+      }
+    },
+    {
+      "id": "docs",
+      "kind": "document_set",
+      "uri": "fixture://docs",
+      "graph": {
+        "nodes": [
+          {
+            "id": "design.md:Workspace",
+            "label": "Workspace",
+            "kind": "concept",
+            "source_location": "design.md#workspace",
+            "description": "Workspace groups repositories and documents.",
+            "_origin": "llm"
+          },
+          {
+            "id": "design.md:Graph",
+            "label": "Knowledge Graph",
+            "kind": "concept",
+            "source_location": "design.md#graph",
+            "description": "Knowledge graph stores extracted relationships.",
+            "_origin": "llm"
+          }
+        ],
+        "edges": [
+          {
+            "source": "design.md:Workspace",
+            "target": "design.md:Graph",
+            "kind": "owns"
+          }
+        ]
+      }
+    }
+  ],
+  "expected_rejections": {
+    "repo": [
+      "dangling endpoint"
+    ],
+    "docs": []
+  }
+}
