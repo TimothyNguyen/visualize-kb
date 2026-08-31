@@ -37,6 +37,7 @@ from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
 from kb_core_ui.rag import (
     AdapterError,
+    ChatManager,
     RagConfig,
     WorkspaceError,
     WorkspaceManager,
@@ -458,7 +459,8 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
             memory = None
 
         workspace_manager = _default_workspace_manager(repo_root)
-        srv = Server(store, repo_root, web_dir, runner, memory, workspace_manager)
+        chat_manager = ChatManager(workspace_manager.registry, workspace_manager.config)
+        srv = Server(store, repo_root, web_dir, runner, memory, workspace_manager, chat_manager)
         display_host = "localhost" if values["host"] in ("127.0.0.1", "localhost") else values["host"]
         url = f"http://{display_host}:{values['port']}"
         cmd.printf(f"kb-core-ui serving {url}\n")

@@ -64,6 +64,19 @@ from kb_core_ui.rag.reconciler import (
     source_version,
 )
 from kb_core_ui.rag.manager import WorkspaceManager
+from kb_core_ui.rag.chat_manager import (
+    SSE_EVENT_CANCELLED,
+    SSE_EVENT_COMPLETED,
+    SSE_EVENT_ERROR,
+    SSE_EVENT_HEARTBEAT,
+    SSE_EVENT_QUEUED,
+    SSE_EVENT_TOKEN,
+    TERMINAL_SSE_EVENTS,
+    ChatManager,
+    ChatManagerError,
+    HashingEmbeddingProvider,
+    chat_contract_payload,
+)
 from kb_core_ui.rag.persistence import (
     ChatHistoryStore,
     ChatThreadAdapter,
@@ -169,6 +182,17 @@ __all__ = [
     "StageCounts",
     "source_version",
     "WorkspaceManager",
+    "SSE_EVENT_CANCELLED",
+    "SSE_EVENT_COMPLETED",
+    "SSE_EVENT_ERROR",
+    "SSE_EVENT_HEARTBEAT",
+    "SSE_EVENT_QUEUED",
+    "SSE_EVENT_TOKEN",
+    "TERMINAL_SSE_EVENTS",
+    "ChatManager",
+    "ChatManagerError",
+    "HashingEmbeddingProvider",
+    "chat_contract_payload",
     "ChatHistoryStore",
     "ChatThreadAdapter",
     "FakeChatBackend",

@@ -1,0 +1,5 @@
+# These fixtures are byte-exact wire payloads compared against a live server
+# by both the Python and TypeScript suites. Checking them out with CRLF would
+# fail every comparison on Windows, so pin the endings regardless of autocrlf.
+* text eol=lf
+*.sse whitespace=-blank-at-eof

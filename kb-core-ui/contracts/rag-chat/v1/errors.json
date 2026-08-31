@@ -1,0 +1,65 @@
+[
+  {
+    "case": "missing_query",
+    "method": "POST",
+    "path": "/api/rag/workspaces/alpha/chat",
+    "status": 400,
+    "body": {
+      "error": "query is required"
+    }
+  },
+  {
+    "case": "unknown_workspace",
+    "method": "POST",
+    "path": "/api/rag/workspaces/nope/chat",
+    "status": 404,
+    "body": {
+      "error": "workspace 'nope' does not exist"
+    }
+  },
+  {
+    "case": "unknown_thread",
+    "method": "GET",
+    "path": "/api/rag/workspaces/alpha/chat/threads/missing",
+    "status": 404,
+    "body": {
+      "error": "thread not found: missing"
+    }
+  },
+  {
+    "case": "duplicate_query_id",
+    "method": "POST",
+    "path": "/api/rag/workspaces/alpha/chat",
+    "status": 409,
+    "body": {
+      "error": "query id already in progress: q-fixture-1"
+    }
+  },
+  {
+    "case": "too_many_streams",
+    "method": "GET",
+    "path": "/api/rag/workspaces/alpha/chat/stream",
+    "status": 429,
+    "body": {
+      "error": "too many concurrent chat streams for workspace alpha (limit 1)"
+    }
+  },
+  {
+    "case": "body_too_large",
+    "method": "POST",
+    "path": "/api/rag/workspaces/alpha/chat",
+    "status": 413,
+    "body": {
+      "error": "request body exceeds 65536 bytes"
+    }
+  },
+  {
+    "case": "backend_unavailable",
+    "method": "POST",
+    "path": "/api/rag/workspaces/alpha/chat",
+    "status": 503,
+    "body": {
+      "error": "falkordb connection refused"
+    }
+  }
+]

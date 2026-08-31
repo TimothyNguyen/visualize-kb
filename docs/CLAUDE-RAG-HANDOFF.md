@@ -96,6 +96,22 @@ second workspace using an identical thread-id string never sees or affects the
 first workspace's turns, deleting a thread makes it unreadable, and cleaning up
 one workspace's threads never touches another's.
 
+## T11 result (REST + SSE chat contract) — done
+
+Added workspace-scoped complete chat, SSE stream, cancellation, suggestions,
+feedback, source-map, graph-explanation, and thread lifecycle routes. Frozen
+JSON/SSE fixtures are byte-compared by Python and consumed by TypeScript tests;
+heartbeats are SSE comments and every stream has exactly one terminal event.
+Frontend API types and methods use only backend REST/SSE routes.
+
+Required harness stage `chat_http_contract` starts `listen_and_serve` on an
+OS-assigned loopback port, exercises real `urllib` transport, cancels a live
+stream, checks replay and error mapping, then stops listener cleanly. Required
+stage count is now 15. Verification: Python 209 passed; harness 128 passed;
+fake RAG workflow 15/15 passed; web 20 passed; lint exited 0; production build
+passed. FalkorDB behavior did not change, so pinned-service rerun was not
+required for T11.
+
 ## Non-Negotiable Workflow
 
 For every remaining task:

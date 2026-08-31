@@ -8,12 +8,17 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+import threading
 import time
 from typing import Any, Callable
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from kb_core_ui.rag import (
     AdapterError,
     ChatHistoryStore,
+    ChatManager,
     ChatRequest,
     ChatResponse,
     ChatWorkflow,
@@ -39,6 +44,9 @@ from kb_core_ui.rag import (
     WorkspaceRegistry,
     WorkspaceManager,
 )
+from kb_core_ui.server import Server
+from kb_core_ui.server.httpd import listen_and_serve
+from kb_core_ui.store import Store
 
 from harness.rag_fakes import InMemoryDriver
 
@@ -53,6 +61,7 @@ REQUIRED_STAGES = (
     "hybrid_retrieval",
     "langgraph_rag",
     "chat_persistence",
+    "chat_http_contract",
     "scoped_read",
     "workspace_management",
     "source_delete_isolation",
@@ -662,6 +671,138 @@ def execute_rag_workflow(
             "removed_on_cleanup": removed,
         }
 
+    def chat_http_contract_stage() -> dict[str, Any]:
+        assert adapter is not None
+        workspace_id = state["workspace"].id
+        config = _config(backend)
+        manager = WorkspaceManager(
+            registry,
+            config,
+            adapter_factory=lambda _workspace_id: _BorrowedAdapter(adapter),
+        )
+        chat = ChatManager(
+            registry,
+            config,
+            adapter_factory=lambda _workspace_id: _BorrowedAdapter(adapter),
+            history_store_factory=lambda borrowed: ChatHistoryStore(borrowed, config=config),
+            embeddings=state["embeddings"],
+            sleep=lambda _seconds: None,
+        )
+        store = Store(str(work_dir / "chat-http.db"))
+        app = Server(
+            store,
+            str(work_dir),
+            workspace_manager=manager,
+            chat_manager=chat,
+        )
+        stopped = threading.Event()
+        listening = threading.Event()
+        bound_port: list[int] = []
+
+        def ready(port: int) -> None:
+            bound_port.append(port)
+            listening.set()
+
+        thread = threading.Thread(
+            target=listen_and_serve,
+            args=("127.0.0.1", 0, app),
+            kwargs={"stop_event": stopped, "ready": ready},
+            name="rag-chat-contract-http",
+            daemon=True,
+        )
+        thread.start()
+        if not listening.wait(5) or not bound_port:
+            stopped.set()
+            raise WorkflowFailure("chat HTTP server did not start")
+        base = f"http://127.0.0.1:{bound_port[0]}/api/rag/workspaces/{workspace_id}/chat"
+
+        def request_json(
+            method: str, url: str, payload: dict[str, Any] | None = None
+        ) -> tuple[int, dict[str, Any]]:
+            body = None if payload is None else json.dumps(payload).encode("utf-8")
+            request = urllib.request.Request(
+                url,
+                data=body,
+                method=method,
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    return response.status, json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read().decode("utf-8"))
+
+        try:
+            status, answer = request_json(
+                "POST",
+                base,
+                {"query": "graph records", "thread_id": "http-thread", "query_id": "http-complete"},
+            )
+            required = {
+                "answer", "query_id", "workspace_id", "context", "explain_graph",
+                "source_map", "strategy", "degraded", "error",
+            }
+            if status != 200 or not required <= answer.keys():
+                raise WorkflowFailure(f"complete chat contract differs: {status} {answer!r}")
+
+            stream_url = base + "/stream?" + urllib.parse.urlencode(
+                {"query": "graph records", "thread_id": "http-stream", "query_id": "http-stream"}
+            )
+            with urllib.request.urlopen(stream_url, timeout=10) as response:
+                stream_text = response.read().decode("utf-8")
+            if stream_text.count("event: completed\n") != 1:
+                raise WorkflowFailure("SSE stream did not emit exactly one completion")
+            if ": heartbeat\n\n" not in stream_text or "event: heartbeat" in stream_text:
+                raise WorkflowFailure("SSE heartbeat was not a comment frame")
+
+            cancel_url = base + "/stream?" + urllib.parse.urlencode(
+                {"query": "graph records", "query_id": "http-cancel"}
+            )
+            with urllib.request.urlopen(cancel_url, timeout=10) as response:
+                first_frame = response.readline().decode("utf-8") + response.readline().decode("utf-8")
+                cancel_status, cancelled = request_json(
+                    "POST", base + "/cancel", {"query_id": "http-cancel"}
+                )
+                cancel_tail = response.read().decode("utf-8")
+            if cancel_status != 200 or not cancelled.get("cancelled"):
+                raise WorkflowFailure(f"HTTP cancellation failed: {cancel_status} {cancelled!r}")
+            if "event: queued" not in first_frame or "event: cancelled" not in cancel_tail:
+                raise WorkflowFailure("cancelled SSE stream has wrong terminal event")
+
+            status, suggestions = request_json("GET", base + "/suggestions")
+            if status != 200 or not suggestions.get("suggestions"):
+                raise WorkflowFailure("suggestions endpoint returned no suggestions")
+            status, feedback = request_json(
+                "POST", base + "/feedback", {"query_id": "http-complete", "rating": "up"}
+            )
+            if status != 200 or feedback.get("rating") != "up":
+                raise WorkflowFailure("feedback endpoint did not accept completed query")
+            for suffix, key in (("source_map?query_id=http-complete", "source_map"),
+                                ("explain_graph?query_id=http-complete", "explain_graph")):
+                status, payload = request_json("GET", base + "/" + suffix)
+                if status != 200 or key not in payload:
+                    raise WorkflowFailure(f"chat {key} endpoint failed")
+            status, replay = request_json("GET", base + "/threads/http-thread")
+            if status != 200 or len(replay.get("turns", [])) != 1:
+                raise WorkflowFailure("thread replay endpoint lost complete turn")
+            status, error = request_json("POST", base, {})
+            if status != 400 or "error" not in error:
+                raise WorkflowFailure("chat validation error mapping changed")
+        finally:
+            stopped.set()
+            thread.join(timeout=5)
+            store.close()
+        if thread.is_alive():
+            raise WorkflowFailure("chat HTTP server did not stop")
+        return {
+            "transport": "http",
+            "complete_status": 200,
+            "stream_terminal_events": 1,
+            "cancelled": True,
+            "thread_turns": 1,
+            "validation_status": 400,
+        }
+
     def read_stage() -> dict[str, Any]:
         assert adapter is not None
         count, source_ids = _read_counts(adapter)
@@ -746,6 +887,7 @@ def execute_rag_workflow(
         ("hybrid_retrieval", hybrid_stage),
         ("langgraph_rag", langgraph_rag_stage),
         ("chat_persistence", chat_persistence_stage),
+        ("chat_http_contract", chat_http_contract_stage),
         ("scoped_read", read_stage),
         ("workspace_management", management_stage),
         ("source_delete_isolation", delete_stage),

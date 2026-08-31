@@ -1,0 +1,12 @@
+event: queued
+data: {"query_id":"q-fixture-1","workspace_id":"alpha"}
+
+: heartbeat
+
+: heartbeat
+
+: heartbeat
+
+event: error
+data: {"query_id":"q-fixture-1","workspace_id":"alpha","status":503,"message":"falkordb connection refused"}
+

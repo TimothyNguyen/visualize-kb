@@ -34,7 +34,7 @@ type KbCoreGraphFile = { nodes?: KbCoreNode[]; edges?: KbCoreEdge[]; links?: KbC
 
 const GRAPH_URL = import.meta.env.VITE_KB_CORE_GRAPH_URL || "/kb-core-out/graph.json"
 const GRAPH_OVERVIEW_URL = import.meta.env.VITE_KB_CORE_GRAPH_OVERVIEW_URL || "/kb-core-out/graph-overview.json"
-const SERVICE_API_BASE = import.meta.env.VITE_KB_CORE_UI_API_URL || "/api"
+export const SERVICE_API_BASE = import.meta.env.VITE_KB_CORE_UI_API_URL || "/api"
 let graphPromise: Promise<KbCoreGraph> | undefined
 let overviewPromise: Promise<KbCoreGraph> | undefined
 

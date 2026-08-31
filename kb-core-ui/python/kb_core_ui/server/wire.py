@@ -12,7 +12,7 @@ from __future__ import annotations
 import html
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Iterable
 
 from kb_core_ui import jsonx
 
@@ -40,6 +40,16 @@ class Response:
     status: int = 200
     body: bytes = b""
     headers: dict[str, str] = field(default_factory=dict)
+    stream: Callable[[], Iterable[bytes]] | None = None
+    """When set, the transport (httpd.py) writes headers with no
+    Content-Length and then writes each chunk this factory yields as it
+    becomes available, instead of the fixed ``body`` bytes -- the SSE chat
+    stream (T11). ``body``/``headers`` from the normal JSON path are unused
+    for a streaming response except for the caller-supplied headers, which
+    still apply (Content-Type, Cache-Control, etc). A *factory* rather than a
+    bare iterator so nothing starts running the underlying generator until
+    the transport is actually ready to write bytes -- constructing the
+    Response never begins doing the work."""
 
     @staticmethod
     def not_found() -> "Response":
@@ -71,6 +81,51 @@ def write_error(status: int, msg: str) -> Response:
 def write_text(text: str) -> Response:
     # No explicit Content-Type: Go sniffs plain text the same way.
     return Response(status=200, body=text.encode("utf-8"), headers={})
+
+
+def format_sse_event(event: str, data: Any) -> bytes:
+    """One well-formed SSE frame: an explicit ``event:`` line (never left to
+    the implicit/unnamed "message" default) plus one ``data:`` line carrying
+    compact JSON, terminated by the required blank line. A payload
+    containing a literal newline would otherwise silently truncate the frame
+    at the browser's EventSource parser, so newlines are rejected up front
+    rather than smuggled through as multiple ``data:`` lines only some
+    servers reassemble correctly."""
+
+    payload = jsonx.dumps(data)
+    if "\n" in payload or "\r" in payload:
+        raise ValueError("SSE data payload must not contain a raw newline")
+    return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
+
+
+SSE_HEARTBEAT_FRAME = b": heartbeat\n\n"
+"""Keep-alive written as an SSE *comment* rather than a named event. A
+comment is discarded by the EventSource parser before any listener runs, so
+a heartbeat cannot be mistaken for answer content -- unlike a named
+``heartbeat`` event, which every client would have to remember to filter."""
+
+
+def write_sse(events: Callable[[], Iterable[bytes]]) -> Response:
+    """A streaming Server-Sent-Events response (T11). ``events`` is a
+    zero-arg factory returning an iterable of already-framed SSE byte
+    chunks (see :func:`format_sse_event`) -- the transport calls it once it
+    is ready to start writing, so no retrieval/provider work happens before
+    the client is actually listening.
+
+    ``X-Accel-Buffering: no`` and an explicit ``no-cache`` stop an
+    intermediary proxy from buffering the whole stream before relaying it,
+    which would defeat incremental delivery entirely.
+    """
+
+    return Response(
+        status=200,
+        headers={
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+        stream=events,
+    )
 
 
 def moved_permanently(location: str) -> Response:

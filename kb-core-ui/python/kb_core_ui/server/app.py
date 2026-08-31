@@ -10,7 +10,7 @@ from __future__ import annotations
 import mimetypes
 import os
 import threading
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 from kb_core_ui import jsonx
 from kb_core_ui.bots.registry import REGISTRY
@@ -19,14 +19,17 @@ from kb_core_ui.errors import KbError
 from kb_core_ui.memory import VALID_KINDS
 from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
-from kb_core_ui.rag import AdapterError, WorkspaceError
+from kb_core_ui.rag import SSE_EVENT_HEARTBEAT, AdapterError, ChatManagerError, WorkspaceError
 from kb_core_ui.server.mux import Mux, clean_path
 from kb_core_ui.server.wire import (
+    SSE_HEARTBEAT_FRAME,
     Request,
     Response,
+    format_sse_event,
     path_unescape,
     write_error,
     write_json,
+    write_sse,
     write_text,
 )
 from kb_core_ui.store import Store
@@ -65,6 +68,7 @@ class Server:
         runner: Runner | None = None,
         memory: MemoryStore | None = None,
         workspace_manager: object | None = None,
+        chat_manager: object | None = None,
     ) -> None:
         self.store = store
         self.repo_root = repo_root
@@ -72,6 +76,7 @@ class Server:
         self.runner = runner
         self.memory = memory
         self.workspace_manager = workspace_manager
+        self.chat_manager = chat_manager
         self.mux = Mux()
         # Go's *sql.DB is a connection pool safe for concurrent use; a
         # sqlite3.Connection is not. Requests arrive on separate threads, so
@@ -441,6 +446,10 @@ class Server:
                 and req.method == "POST"
             ):
                 return write_json(manager.cancel_ingestion(workspace_id, parts[2]))
+            if len(parts) >= 2 and parts[1] == "chat":
+                return self._handle_chat(req, workspace_id, parts[2:])
+        except ChatManagerError as exc:
+            return write_error(exc.status, str(exc))
         except WorkspaceError as exc:
             status = 404 if "does not exist" in str(exc) else 400
             return write_error(status, str(exc))
@@ -450,6 +459,106 @@ class Server:
             return write_error(404, f"resource not found: {exc.args[0]}")
         except ValueError as exc:
             return write_error(400, str(exc))
+        return write_error(404, "not found")
+
+    # ---- GraphRAG chat (T11) --------------------------------------------
+
+    def _handle_chat(self, req: Request, workspace_id: str, sub: list[str]) -> Response:
+        """``sub`` is the path after ``/api/rag/workspaces/{id}/chat``, e.g.
+        ``[]`` for the base route or ``["threads", "t1"]``. Raised errors
+        propagate to ``handle_rag_workspaces``'s shared exception mapping."""
+
+        chat = self.chat_manager
+        if chat is None:
+            return write_error(404, "not found")
+        leaf = sub[0] if sub else ""
+
+        if leaf == "" and req.method == "POST":
+            chat.check_body_size(req.body)
+            body = _json_object(req.body)
+            query = _json_string(body, "query")
+            if query == "":
+                return write_error(400, "query is required")
+            payload = chat.ask(
+                workspace_id,
+                query=query,
+                thread_id=_json_string(body, "thread_id"),
+                allowed_source_ids=_json_string_list(body, "allowed_source_ids"),
+                strategy=_json_string(body, "strategy") or "auto",
+                requested_k=_json_int(body, "requested_k"),
+                requested_graph_row_limit=_json_int(body, "requested_graph_row_limit"),
+                query_id=_json_string(body, "query_id"),
+            )
+            return write_json(payload)
+
+        if leaf == "stream" and req.method == "GET":
+            query = req.get_query("query")
+            if query == "":
+                return write_error(400, "query is required")
+            domain_events = chat.open_stream(
+                workspace_id,
+                query=query,
+                thread_id=req.get_query("thread_id"),
+                allowed_source_ids=req.query.get("allowed_source_ids", []),
+                strategy=req.get_query("strategy") or "auto",
+                requested_k=_atoi_or_none(req.get_query("requested_k")),
+                requested_graph_row_limit=_atoi_or_none(req.get_query("requested_graph_row_limit")),
+                query_id=req.get_query("query_id"),
+            )
+
+            def framed() -> Iterable[bytes]:
+                for event, data in domain_events():
+                    if event == SSE_EVENT_HEARTBEAT:
+                        yield SSE_HEARTBEAT_FRAME
+                    else:
+                        yield format_sse_event(event, data)
+
+            return write_sse(framed)
+
+        if leaf == "cancel" and req.method == "POST":
+            body = _json_object(req.body)
+            query_id = _json_string(body, "query_id")
+            if query_id == "":
+                return write_error(400, "query_id is required")
+            return write_json(chat.cancel(workspace_id, query_id))
+
+        if leaf == "suggestions" and req.method == "GET":
+            return write_json(chat.suggestions(workspace_id, thread_id=req.get_query("thread_id")))
+
+        if leaf == "feedback" and req.method == "POST":
+            body = _json_object(req.body)
+            query_id = _json_string(body, "query_id")
+            if query_id == "":
+                return write_error(400, "query_id is required")
+            return write_json(
+                chat.feedback(
+                    workspace_id,
+                    query_id=query_id,
+                    rating=_json_string(body, "rating"),
+                    comment=_json_string(body, "comment"),
+                )
+            )
+
+        if leaf == "source_map" and req.method == "GET":
+            query_id = req.get_query("query_id")
+            if query_id == "":
+                return write_error(400, "query_id is required")
+            return write_json(chat.source_map(workspace_id, query_id))
+
+        if leaf == "explain_graph" and req.method == "GET":
+            query_id = req.get_query("query_id")
+            if query_id == "":
+                return write_error(400, "query_id is required")
+            return write_json(chat.explain_graph(workspace_id, query_id))
+
+        if leaf == "threads":
+            if len(sub) == 1 and req.method == "DELETE":
+                return write_json(chat.delete_all_threads(workspace_id))
+            if len(sub) == 2 and req.method == "GET":
+                return write_json(chat.list_thread(workspace_id, sub[1]))
+            if len(sub) == 2 and req.method == "DELETE":
+                return write_json(chat.delete_thread(workspace_id, sub[1]))
+
         return write_error(404, "not found")
 
     # ---- static UI -----------------------------------------------------
@@ -521,6 +630,23 @@ def _json_string(body: dict, key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _json_string_list(body: dict, key: str) -> list[str]:
+    value = body.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _json_int(body: dict, key: str) -> int | None:
+    value = body.get(key)
+    # bool is an int subclass; a JSON true/false is never a valid limit.
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _atoi_or_none(raw: str) -> int | None:
+    return _atoi(raw) if raw != "" else None
+
+
 def _json_object(raw: bytes) -> dict[str, Any]:
     try:
         value = jsonx.loads(raw.decode("utf-8"))
@@ -540,4 +666,9 @@ def _with_cors(handler: Callable[[Request], Response], req: Request) -> Response
     if req.method == "OPTIONS":
         return Response(status=204, body=b"", headers=headers)
     resp = handler(req)
-    return Response(status=resp.status, body=resp.body, headers={**headers, **resp.headers})
+    return Response(
+        status=resp.status,
+        body=resp.body,
+        headers={**headers, **resp.headers},
+        stream=resp.stream,
+    )

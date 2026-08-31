@@ -1,0 +1,107 @@
+{
+  "workspace_id": "alpha",
+  "thread_id": "thread-fixture",
+  "turns": [
+    {
+      "turn_id": "turn-fixture-1",
+      "thread_id": "thread-fixture",
+      "workspace_id": "alpha",
+      "seq": 1,
+      "query": "graph records",
+      "response": {
+        "answer": "Based on the retrieved sources: Related repo entity. [node-related]; Repo parses graph records. [node-repo]; Docs describe graph records. [chunk-docs]",
+        "citations": [
+          {
+            "evidence_id": "node-related",
+            "origin": "graph",
+            "source_id": "repo",
+            "source_location": "related.py:L1"
+          },
+          {
+            "evidence_id": "node-repo",
+            "origin": "retrieval",
+            "source_id": "repo",
+            "source_location": "repo.py:L1"
+          },
+          {
+            "evidence_id": "chunk-docs",
+            "origin": "retrieval",
+            "source_id": "docs",
+            "source_location": "docs.md"
+          }
+        ],
+        "degraded": false,
+        "errors": [],
+        "insufficient_evidence": false,
+        "query_id": "q-fixture-1",
+        "strategy": "auto",
+        "timings": {
+          "answer_synthesis": 0.0,
+          "citation_validation": 0.0,
+          "entity_expansion": 0.0,
+          "evidence_ranking": 0.0,
+          "graph_query": 0.0,
+          "hybrid_retrieval": 0.0,
+          "scope_validation": 0.0
+        },
+        "workspace_id": "alpha",
+        "context": [
+          {
+            "id": "node-related",
+            "origin": "graph",
+            "score": 0.5,
+            "source_id": "repo",
+            "source_location": "related.py:L1",
+            "text": "Related repo entity."
+          },
+          {
+            "id": "node-repo",
+            "origin": "retrieval",
+            "score": 0.03278688524590164,
+            "source_id": "repo",
+            "source_location": "repo.py:L1",
+            "text": "Repo parses graph records."
+          },
+          {
+            "id": "chunk-docs",
+            "origin": "retrieval",
+            "score": 0.016129032258064516,
+            "source_id": "docs",
+            "source_location": "docs.md",
+            "text": "Docs describe graph records."
+          }
+        ],
+        "explain_graph": {
+          "nodes": [
+            {
+              "id": "node-related",
+              "source_id": "repo",
+              "label": "Related repo entity.",
+              "source_location": "related.py:L1"
+            }
+          ],
+          "edges": []
+        },
+        "source_map": {
+          "node-related": {
+            "source_id": "repo",
+            "source_location": "related.py:L1",
+            "origin": "graph"
+          },
+          "node-repo": {
+            "source_id": "repo",
+            "source_location": "repo.py:L1",
+            "origin": "retrieval"
+          },
+          "chunk-docs": {
+            "source_id": "docs",
+            "source_location": "docs.md",
+            "origin": "retrieval"
+          }
+        },
+        "error": ""
+      },
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

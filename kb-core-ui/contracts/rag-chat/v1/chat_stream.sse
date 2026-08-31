@@ -1,0 +1,69 @@
+event: queued
+data: {"query_id":"q-fixture-1","workspace_id":"alpha"}
+
+: heartbeat
+
+: heartbeat
+
+: heartbeat
+
+event: token
+data: {"query_id":"q-fixture-1","text":"Based"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"on"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"the"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"retrieved"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"sources:"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"Related"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"repo"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"entity."}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"[node-related];"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"Repo"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"parses"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"graph"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"records."}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"[node-repo];"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"Docs"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"describe"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"graph"}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"records."}
+
+event: token
+data: {"query_id":"q-fixture-1","text":"[chunk-docs]"}
+
+event: completed
+data: {"workspace_id":"alpha","query_id":"q-fixture-1","answer":"Based on the retrieved sources: Related repo entity. [node-related]; Repo parses graph records. [node-repo]; Docs describe graph records. [chunk-docs]","citations":[{"evidence_id":"node-related","source_id":"repo","source_location":"related.py:L1","origin":"graph"},{"evidence_id":"node-repo","source_id":"repo","source_location":"repo.py:L1","origin":"retrieval"},{"evidence_id":"chunk-docs","source_id":"docs","source_location":"docs.md","origin":"retrieval"}],"degraded":false,"insufficient_evidence":false,"strategy":"auto","errors":[],"timings":{"scope_validation":0.0,"hybrid_retrieval":0.0,"entity_expansion":0.0,"graph_query":0.0,"evidence_ranking":0.0,"answer_synthesis":0.0,"citation_validation":0.0},"context":[{"id":"node-related","source_id":"repo","text":"Related repo entity.","source_location":"related.py:L1","score":0.5,"origin":"graph"},{"id":"node-repo","source_id":"repo","text":"Repo parses graph records.","source_location":"repo.py:L1","score":0.03278688524590164,"origin":"retrieval"},{"id":"chunk-docs","source_id":"docs","text":"Docs describe graph records.","source_location":"docs.md","score":0.016129032258064516,"origin":"retrieval"}],"explain_graph":{"nodes":[{"id":"node-related","source_id":"repo","label":"Related repo entity.","source_location":"related.py:L1"}],"edges":[]},"source_map":{"node-related":{"source_id":"repo","source_location":"related.py:L1","origin":"graph"},"node-repo":{"source_id":"repo","source_location":"repo.py:L1","origin":"retrieval"},"chunk-docs":{"source_id":"docs","source_location":"docs.md","origin":"retrieval"}},"error":""}
+

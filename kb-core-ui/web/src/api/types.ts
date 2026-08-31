@@ -135,3 +135,151 @@ export interface MemoryHit {
   entry: MemoryEntry
   score: number // cosine similarity, higher = more relevant
 }
+
+// --- Workspace GraphRAG chat ---
+// The wire shapes frozen under kb-core-ui/contracts/rag-chat/v1, which the
+// server regenerates and byte-compares on every test run. Field names stay
+// snake_case because these are the server payloads verbatim.
+
+export type ChatStrategy = "auto" | "local" | "multi_path"
+export type ChatEvidenceOrigin = "retrieval" | "graph"
+export type ChatFeedbackRating = "up" | "down"
+
+export interface ChatEvidence {
+  id: string
+  source_id: string
+  text: string
+  source_location: string
+  score: number
+  origin: ChatEvidenceOrigin
+}
+
+export interface ChatCitation {
+  evidence_id: string
+  source_id: string
+  source_location: string
+  origin: ChatEvidenceOrigin
+}
+
+export interface ChatExplainGraphNode {
+  id: string
+  source_id: string
+  label: string
+  source_location: string
+}
+
+export interface ChatExplainGraphEdge {
+  source: string
+  target: string
+  relation: string
+}
+
+export interface ChatExplainGraph {
+  nodes: ChatExplainGraphNode[]
+  edges: ChatExplainGraphEdge[]
+}
+
+export interface ChatSourceMapEntry {
+  source_id: string
+  source_location: string
+  origin: ChatEvidenceOrigin
+}
+
+// One finished answer. Identical whether it arrives from POST /chat, the
+// terminal `completed` SSE event, or a turn replayed out of thread history.
+export interface ChatAnswer {
+  workspace_id: string
+  query_id: string
+  answer: string
+  citations: ChatCitation[]
+  context: ChatEvidence[] // the evidence the answer is grounded in
+  explain_graph: ChatExplainGraph
+  source_map: Record<string, ChatSourceMapEntry> // evidence id -> source
+  strategy: ChatStrategy
+  degraded: boolean // graph expansion failed; vector evidence survived
+  insufficient_evidence: boolean
+  errors: string[] // non-fatal workflow notes, never provider internals
+  timings: Record<string, number> // per-node seconds
+  error: string // "" unless the request itself failed
+}
+
+export interface ChatAskRequest {
+  query: string
+  thread_id?: string
+  allowed_source_ids?: string[]
+  strategy?: ChatStrategy
+  requested_k?: number
+  requested_graph_row_limit?: number
+  query_id?: string
+}
+
+export interface ChatTurn {
+  turn_id: string
+  thread_id: string
+  workspace_id: string
+  seq: number // 1-based, monotonic within the thread
+  query: string
+  response: ChatAnswer
+  created_at: string // RFC3339
+}
+
+export interface ChatThread {
+  workspace_id: string
+  thread_id: string
+  turns: ChatTurn[]
+}
+
+export interface ChatSuggestions {
+  workspace_id: string
+  suggestions: string[]
+  recent_queries: string[]
+}
+
+export interface ChatFeedbackEntry {
+  query_id: string
+  workspace_id: string
+  rating: ChatFeedbackRating
+  comment: string
+  created_at: string // RFC3339
+}
+
+export interface ChatCancelResult {
+  query_id: string
+  workspace_id: string
+  cancelled: boolean // false when the query had already finished
+  reason?: string
+}
+
+export interface ChatSourceMapResponse {
+  workspace_id: string
+  query_id: string
+  source_map: Record<string, ChatSourceMapEntry>
+}
+
+export interface ChatExplainGraphResponse {
+  workspace_id: string
+  query_id: string
+  explain_graph: ChatExplainGraph
+}
+
+export interface ChatThreadDeleted {
+  workspace_id: string
+  thread_id: string
+  deleted: boolean
+}
+
+export interface ChatThreadsDeleted {
+  workspace_id: string
+  deleted_threads: number
+}
+
+// SSE frames. Heartbeats are SSE comments, so they are dropped by the parser
+// and never appear here. Exactly one terminal event ends a stream.
+export type ChatStreamEvent =
+  | { event: "queued"; data: { query_id: string; workspace_id: string } }
+  | { event: "token"; data: { query_id: string; text: string } }
+  | { event: "completed"; data: ChatAnswer }
+  | { event: "cancelled"; data: { query_id: string; workspace_id: string } }
+  | { event: "error"; data: { query_id: string; workspace_id: string; status: number; message: string } }
+
+export type ChatTerminalEvent = Extract<ChatStreamEvent, { event: "completed" | "cancelled" | "error" }>

@@ -1,0 +1,6 @@
+event: queued
+data: {"query_id":"q-fixture-1","workspace_id":"alpha"}
+
+event: cancelled
+data: {"query_id":"q-fixture-1","workspace_id":"alpha"}
+
