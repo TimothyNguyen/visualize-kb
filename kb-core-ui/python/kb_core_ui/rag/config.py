@@ -50,6 +50,7 @@ class RagConfig:
     max_graph_row_limit: int = 25
     max_answer_tokens: int = 800
     max_provider_retries: int = 2
+    max_thread_turns: int = 200
     errors: tuple[str, ...] = ()
 
     @classmethod
@@ -84,6 +85,9 @@ class RagConfig:
         max_provider_retries = _positive_int(
             environ.get("RAG_MAX_PROVIDER_RETRIES", "2"), "RAG_MAX_PROVIDER_RETRIES", 2, errors
         )
+        max_thread_turns = _positive_int(
+            environ.get("RAG_MAX_THREAD_TURNS", "200"), "RAG_MAX_THREAD_TURNS", 200, errors
+        )
         return cls(
             enabled=enabled,
             falkordb_url=environ.get("FALKORDB_URL", "").strip(),
@@ -100,6 +104,7 @@ class RagConfig:
             max_graph_row_limit=max_graph_row_limit,
             max_answer_tokens=max_answer_tokens,
             max_provider_retries=max_provider_retries,
+            max_thread_turns=max_thread_turns,
             errors=tuple(errors),
         )
 
@@ -147,5 +152,6 @@ class RagConfig:
             "maxGraphRowLimit": self.max_graph_row_limit,
             "maxAnswerTokens": self.max_answer_tokens,
             "maxProviderRetries": self.max_provider_retries,
+            "maxThreadTurns": self.max_thread_turns,
             "errors": list(self.readiness_errors()),
         }

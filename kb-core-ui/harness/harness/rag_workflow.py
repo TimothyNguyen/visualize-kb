@@ -13,7 +13,9 @@ from typing import Any, Callable
 
 from kb_core_ui.rag import (
     AdapterError,
+    ChatHistoryStore,
     ChatRequest,
+    ChatResponse,
     ChatWorkflow,
     DocumentSetIngestor,
     FakeChatModel,
@@ -50,6 +52,7 @@ REQUIRED_STAGES = (
     "refresh_retry_reconcile",
     "hybrid_retrieval",
     "langgraph_rag",
+    "chat_persistence",
     "scoped_read",
     "workspace_management",
     "source_delete_isolation",
@@ -262,6 +265,7 @@ def execute_rag_workflow(
     def reconcile_stage() -> dict[str, Any]:
         nonlocal adapter, indexer
         driver = InMemoryDriver() if backend == "fake" else None
+        state["driver"] = driver
         adapter = FalkorDBAdapter(_config(backend), state["workspace"].id, driver=driver)
         state["embeddings"] = _HarnessEmbeddings()
         indexer = RetrievalIndexer(adapter, state["embeddings"])
@@ -553,6 +557,111 @@ def execute_rag_workflow(
             "citation_grounding_ok": True,
         }
 
+    def chat_persistence_stage() -> dict[str, Any]:
+        assert adapter is not None
+        workspace_id = state["workspace"].id
+        config = _config(backend)
+        driver = state.get("driver")
+
+        def make_store(ws_id: str) -> tuple[FalkorDBAdapter, ChatHistoryStore]:
+            ws_driver = driver if backend == "fake" else None
+            ws_adapter = FalkorDBAdapter(config, ws_id, driver=ws_driver)
+            return ws_adapter, ChatHistoryStore(ws_adapter, config=config)
+
+        def make_response(query_id: str, marker: str) -> ChatResponse:
+            return ChatResponse(
+                workspace_id=workspace_id,
+                query_id=query_id,
+                answer=f"Answer referencing {marker} [e1]",
+                citations=[
+                    {
+                        "evidence_id": "e1",
+                        "source_id": "repo",
+                        "source_location": "repo.py:L1",
+                        "origin": "retrieval",
+                    }
+                ],
+                evidence=[
+                    {
+                        "id": "e1",
+                        "source_id": "repo",
+                        "text": marker,
+                        "source_location": "repo.py:L1",
+                        "score": 1.0,
+                        "origin": "retrieval",
+                    }
+                ],
+                degraded=False,
+                insufficient_evidence=False,
+                strategy="auto",
+                errors=[],
+                timings={},
+            )
+
+        # 0) Write the first turn of a thread through a freshly constructed
+        #    store bound to the primary workspace.
+        primary_adapter, primary_store = make_store(workspace_id)
+        primary_store.write_turn("conv-1", "first question", make_response("turn-1", "first-turn"))
+
+        # 1) Restart-safe replay: reconstruct the adapter/store from scratch
+        #    against the same durable backend and confirm history survives.
+        reopened_adapter, reopened_store = make_store(workspace_id)
+        replayed = reopened_store.list_turns("conv-1")
+        if len(replayed) != 1 or replayed[0].query != "first question":
+            raise WorkflowFailure(f"restart-safe replay lost history: {replayed!r}")
+
+        # 2) Resume the thread: append a second turn and confirm ordering.
+        reopened_store.write_turn("conv-1", "second question", make_response("turn-2", "second-turn"))
+        resumed = reopened_store.list_turns("conv-1")
+        if [t.query for t in resumed] != ["first question", "second question"]:
+            raise WorkflowFailure(f"resume did not append turns in order: {resumed!r}")
+        if [t.seq for t in resumed] != [1, 2]:
+            raise WorkflowFailure(f"resumed turn sequence is not monotonic: {resumed!r}")
+
+        # 3) Workspace isolation: a second workspace using the exact same
+        #    thread-identity-looking string must never see or affect turn 1.
+        other_workspace_id = f"{workspace_id}-iso"
+        if other_workspace_id not in registry.workspaces:
+            registry.create(other_workspace_id, "Isolation workspace")
+        other_adapter, other_store = make_store(other_workspace_id)
+        other_store.write_turn(
+            "conv-1", "other workspace question", make_response("turn-1", "other-workspace")
+        )
+        other_turns = other_store.list_turns("conv-1")
+        if [t.query for t in other_turns] != ["other workspace question"]:
+            raise WorkflowFailure(f"second workspace thread write failed: {other_turns!r}")
+        if [t.query for t in primary_store.list_turns("conv-1")] != [
+            "first question",
+            "second question",
+        ]:
+            raise WorkflowFailure("cross-workspace leakage: primary thread was affected")
+
+        # 4) Expire/delete a thread and confirm it is gone.
+        reopened_store.delete_thread("conv-1")
+        if reopened_store.list_turns("conv-1") != []:
+            raise WorkflowFailure("deleted thread is still readable")
+
+        # 5) Cleanup of one workspace's threads must not affect another's.
+        other_store.write_turn("conv-2", "second thread question", make_response("turn-1", "second-thread"))
+        removed = other_store.cleanup_workspace()
+        if removed < 1:
+            raise WorkflowFailure(f"cleanup reported no removed threads: {removed!r}")
+        if other_store.list_turns("conv-1") != [] or other_store.list_turns("conv-2") != []:
+            raise WorkflowFailure("cleanup left threads behind in the cleaned workspace")
+        primary_store.write_turn("conv-3", "post-cleanup question", make_response("turn-3", "post-cleanup"))
+        if [t.query for t in primary_store.list_turns("conv-3")] != ["post-cleanup question"]:
+            raise WorkflowFailure("cleanup of another workspace affected this workspace's threads")
+
+        other_adapter.delete_graph()
+        other_adapter.close()
+
+        return {
+            "restart_replay_turns": len(replayed),
+            "resumed_turns": len(resumed),
+            "isolation_workspace": other_workspace_id,
+            "removed_on_cleanup": removed,
+        }
+
     def read_stage() -> dict[str, Any]:
         assert adapter is not None
         count, source_ids = _read_counts(adapter)
@@ -636,6 +745,7 @@ def execute_rag_workflow(
         ("refresh_retry_reconcile", refresh_stage),
         ("hybrid_retrieval", hybrid_stage),
         ("langgraph_rag", langgraph_rag_stage),
+        ("chat_persistence", chat_persistence_stage),
         ("scoped_read", read_stage),
         ("workspace_management", management_stage),
         ("source_delete_isolation", delete_stage),

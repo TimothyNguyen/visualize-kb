@@ -43,6 +43,15 @@ def test_ready_config_hides_credentials_from_public_status() -> None:
     assert "reader" not in repr(status)
 
 
+def test_thread_retention_defaults_and_env_override() -> None:
+    default_config = RagConfig.from_env({})
+    assert default_config.max_thread_turns == 200
+
+    overridden = RagConfig.from_env({"RAG_MAX_THREAD_TURNS": "5"})
+    assert overridden.max_thread_turns == 5
+    assert overridden.public_status()["maxThreadTurns"] == 5
+
+
 def test_invalid_bool_integer_and_url_are_readiness_errors() -> None:
     config = RagConfig.from_env(
         {

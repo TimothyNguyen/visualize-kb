@@ -707,6 +707,92 @@ class FalkorDBAdapter:
             params,
         )
 
+    # -- Chat thread/turn persistence (T10) ---------------------------------
+    #
+    # Reuses this adapter's own write/read primitives; never opens a second
+    # database client. Every record also carries an explicit workspace_id
+    # property (C3 defense-in-depth) in addition to already living inside
+    # this workspace's own FalkorDB graph.
+
+    def write_chat_turn(
+        self,
+        thread_key: str,
+        thread_id: str,
+        turn_id: str,
+        query_text: str,
+        response_json: str,
+        created_at: str,
+    ) -> int:
+        """Atomically create the thread record (on first use) and append one
+        complete turn in a single write. Returns the turn's 1-based sequence
+        number within the thread."""
+
+        rows = self._write(
+            "MERGE (t:ChatThread {id: $thread_key, workspace_id: $workspace_id}) "
+            "ON CREATE SET t.thread_id = $thread_id, t.created_at = $created_at, "
+            "t.next_seq = 0 "
+            "SET t.next_seq = t.next_seq + 1, t.updated_at = $created_at "
+            "WITH t "
+            "CREATE (c:ChatTurn {id: $turn_id, thread_key: $thread_key, "
+            "workspace_id: $workspace_id, seq: t.next_seq, query: $query_text, "
+            "response_json: $response_json, created_at: $created_at}) "
+            "RETURN t.next_seq",
+            {
+                "thread_key": thread_key,
+                "thread_id": thread_id,
+                "turn_id": turn_id,
+                "query_text": query_text,
+                "response_json": response_json,
+                "created_at": created_at,
+            },
+        )
+        return int(rows[0][0])
+
+    def list_chat_turns(self, thread_key: str) -> list[Any]:
+        return self.read_query(
+            "MATCH (c:ChatTurn {thread_key: $thread_key, workspace_id: $workspace_id}) "
+            "RETURN c.id, c.seq, c.query, c.response_json, c.created_at",
+            {"thread_key": thread_key},
+        )
+
+    def trim_chat_turns(self, thread_key: str, cutoff_seq: int) -> None:
+        """Delete turns at or below ``cutoff_seq`` for one thread (retention)."""
+
+        self._write(
+            "MATCH (c:ChatTurn {thread_key: $thread_key, workspace_id: $workspace_id}) "
+            "WHERE c.seq <= $cutoff_seq DETACH DELETE c",
+            {"thread_key": thread_key, "cutoff_seq": cutoff_seq},
+        )
+
+    def delete_chat_thread(self, thread_key: str) -> None:
+        self._write(
+            "MATCH (c:ChatTurn {thread_key: $thread_key, workspace_id: $workspace_id}) "
+            "DETACH DELETE c",
+            {"thread_key": thread_key},
+        )
+        self._write(
+            "MATCH (t:ChatThread {id: $thread_key, workspace_id: $workspace_id}) "
+            "DETACH DELETE t",
+            {"thread_key": thread_key},
+        )
+
+    def delete_all_chat_threads(self) -> int:
+        """Delete every thread/turn owned by this adapter's workspace only.
+        Because each adapter is bound to exactly one FalkorDB graph (C3), this
+        can never reach another workspace's records."""
+
+        rows = self.read_query(
+            "MATCH (t:ChatThread {workspace_id: $workspace_id}) RETURN count(t)"
+        )
+        count = int(rows[0][0]) if rows else 0
+        self._write(
+            "MATCH (c:ChatTurn {workspace_id: $workspace_id}) DETACH DELETE c", {}
+        )
+        self._write(
+            "MATCH (t:ChatThread {workspace_id: $workspace_id}) DETACH DELETE t", {}
+        )
+        return count
+
     def read_query(self, query: str, params: Mapping[str, object] | None = None) -> list[Any]:
         validate_read_only_cypher(query)
         scoped_params = dict(params or {})

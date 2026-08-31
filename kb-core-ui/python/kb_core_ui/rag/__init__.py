@@ -64,6 +64,16 @@ from kb_core_ui.rag.reconciler import (
     source_version,
 )
 from kb_core_ui.rag.manager import WorkspaceManager
+from kb_core_ui.rag.persistence import (
+    ChatHistoryStore,
+    ChatThreadAdapter,
+    FakeChatBackend,
+    FakeChatThreadAdapter,
+    PersistedTurn,
+    PersistenceError,
+    thread_key,
+    validate_thread_id,
+)
 from kb_core_ui.rag.workflow import (
     ALLOWED_LABELS_AND_RELATIONSHIPS,
     ALLOWED_PROPERTIES,
@@ -159,6 +169,14 @@ __all__ = [
     "StageCounts",
     "source_version",
     "WorkspaceManager",
+    "ChatHistoryStore",
+    "ChatThreadAdapter",
+    "FakeChatBackend",
+    "FakeChatThreadAdapter",
+    "PersistedTurn",
+    "PersistenceError",
+    "thread_key",
+    "validate_thread_id",
     "ALLOWED_LABELS_AND_RELATIONSHIPS",
     "ALLOWED_PROPERTIES",
     "ALLOWED_PARAMETERS",

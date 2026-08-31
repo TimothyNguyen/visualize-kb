@@ -16,21 +16,24 @@ is execution context, not replacement spec.
 - Handoff base commit: HEAD of `rag-chatbot-manager` as of this commit (this
   doc is committed together with the task it describes, so it cannot pin its
   own SHA — run `git log -1` on this branch for the exact hash)
-- Completed: T1-T9 and T20
-- Remaining: T10-T19
-- Python core test result: `147 passed` (128 base + 19 new T9 workflow tests)
+- Completed: T1-T10 and T20
+- Remaining: T11-T19
+- Python core test result: `163 passed` (147 prior + 16 new T10 persistence
+  tests across `test_rag_persistence.py`, `test_falkordb_adapter.py`,
+  `test_rag_config.py`)
 - Harness test result: `128 passed`
-- Dynamic RAG workflow: all 13 stages pass against fake backend and pinned
-  `falkordb/falkordb:v4.20.4` (13th stage: `langgraph_rag`, added by T9)
+- Dynamic RAG workflow: all 14 stages pass against fake backend and pinned
+  `falkordb/falkordb:v4.20.4` (14th stage: `chat_persistence`, added by T10)
 - Loop started at: `2026-08-31T03:44:54Z` (wall-clock anchor for the 5-hour
   budget proxy; set once, never overwritten)
-- Next action: start T10 (workspace-scoped chat persistence) — read T10's
-  deliverables below, write failing persistence contract tests first
+- Next action: start T11 (REST + SSE chat contract) — read T11's deliverables
+  below, write contract fixtures first
 
 Relevant commits:
 
 ```text
-<T9 commit, see git log -1> T9: Add LangGraph RAG workflow
+<T10 commit, see git log -1> T10: Add workspace-scoped chat persistence
+<T9 commit> T9: Add LangGraph RAG workflow
 73ea8a3 feat(rag): add workspace management surface
 2a7edfa T7: Add hybrid FalkorDB retrieval indexes
 44813e7 T6: Add repo and document ingestion
@@ -64,6 +67,34 @@ config and threaded through `RetrievalLimits` but not yet enforced by
 truncation logic — `FakeChatModel` output is naturally short so this wasn't
 exercised. Enforce it when a real (non-fake) `ChatModel` provider is wired in
 (T10+ territory, not required by T9's deliverable list).
+
+## T10 result (workspace-scoped chat persistence) — done
+
+New module `kb-core-ui/python/kb_core_ui/rag/persistence.py`: `ChatHistoryStore`
+wraps a narrow `ChatThreadAdapter` protocol (`write_chat_turn`, `list_chat_turns`,
+`trim_chat_turns`, `delete_chat_thread`, `delete_all_chat_threads`) — never opens
+a second database client, built entirely on `FalkorDBAdapter`'s own new
+primitives. Thread identity (`thread_key`) always mixes `workspace_id` with the
+caller-supplied thread id, so isolation holds even against the deliberately
+unpartitioned `FakeChatBackend` used in tests (V11 proven at the key layer, not
+just by picking a different backend per workspace). `write_turn` only accepts an
+already-finished `ChatResponse` instance — structurally no incremental/streamed
+delta or arbitrary dict/kwargs can smuggle a field (e.g. a provider secret) into
+persisted state. Retention: `RagConfig.max_thread_turns` (default 200, env
+`RAG_MAX_THREAD_TURNS`) triggers oldest-turn trimming after each write.
+
+`FalkorDBAdapter` gained `write_chat_turn`/`list_chat_turns`/`trim_chat_turns`/
+`delete_chat_thread`/`delete_all_chat_threads`, all going through the adapter's
+existing `_write`/`read_query` methods, which already enforce `$workspace_id`
+scoping and reject any workspace_id parameter mismatch (defense-in-depth: every
+stored node also carries an explicit `workspace_id` property).
+
+New harness stage `chat_persistence` (14th required stage) proves: a fresh
+adapter/store constructed against the same durable backend replays prior
+history (restart-safe), resuming a thread appends turns in monotonic order, a
+second workspace using an identical thread-id string never sees or affects the
+first workspace's turns, deleting a thread makes it unreadable, and cleaning up
+one workspace's threads never touches another's.
 
 ## Non-Negotiable Workflow
 

@@ -333,6 +333,73 @@ def test_ensure_retrieval_indexes_creates_and_verifies_four_indexes() -> None:
     assert "CALL db.indexes()" in queries
 
 
+def test_write_chat_turn_is_single_scoped_write_returning_sequence() -> None:
+    driver = FakeDriver()
+    driver.graph.query_results = [[[3]]]
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    seq = adapter.write_chat_turn(
+        "alpha::conv-1", "conv-1", "turn-1", "what parses records?", "{}", "2026-08-31T00:00:00Z"
+    )
+
+    assert seq == 3
+    assert len(driver.graph.writes) == 1
+    query, params, timeout = driver.graph.writes[0]
+    assert ":ChatThread" in query and ":ChatTurn" in query
+    assert "$workspace_id" in query
+    assert params == {
+        "workspace_id": "alpha",
+        "thread_key": "alpha::conv-1",
+        "thread_id": "conv-1",
+        "turn_id": "turn-1",
+        "query_text": "what parses records?",
+        "response_json": "{}",
+        "created_at": "2026-08-31T00:00:00Z",
+    }
+    assert timeout == 7_000
+
+
+def test_list_chat_turns_reads_only_and_scoped_to_thread_key() -> None:
+    driver = FakeDriver()
+    driver.graph.read_results = [
+        [["turn-1", 1, "q1", "{}", "2026-08-31T00:00:00Z"]],
+    ]
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    rows = adapter.list_chat_turns("alpha::conv-1")
+
+    assert rows == [["turn-1", 1, "q1", "{}", "2026-08-31T00:00:00Z"]]
+    query, params, _ = driver.graph.reads[0]
+    assert "ChatTurn" in query
+    assert params == {"workspace_id": "alpha", "thread_key": "alpha::conv-1"}
+
+
+def test_trim_and_delete_chat_thread_stay_scoped_to_workspace_and_thread() -> None:
+    driver = FakeDriver()
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    adapter.trim_chat_turns("alpha::conv-1", 2)
+    adapter.delete_chat_thread("alpha::conv-1")
+
+    assert len(driver.graph.writes) == 3
+    assert all(params["workspace_id"] == "alpha" for _, params, _ in driver.graph.writes)
+    assert all(params["thread_key"] == "alpha::conv-1" for _, params, _ in driver.graph.writes)
+    trim_query = driver.graph.writes[0][0]
+    assert "cutoff_seq" in trim_query
+
+
+def test_delete_all_chat_threads_counts_then_deletes_workspace_scoped_only() -> None:
+    driver = FakeDriver()
+    driver.graph.read_results = [[[2]]]
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    count = adapter.delete_all_chat_threads()
+
+    assert count == 2
+    assert len(driver.graph.writes) == 2
+    assert all(params == {"workspace_id": "alpha"} for _, params, _ in driver.graph.writes)
+
+
 def test_search_methods_parameterize_scope_and_return_candidates() -> None:
     driver = FakeDriver(graph_exists=True)
     driver.graph.query_results = [

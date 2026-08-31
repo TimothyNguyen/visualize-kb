@@ -24,6 +24,8 @@ class InMemoryGraph:
         self.citations: dict[str, dict[str, Any]] = {}
         self.index_manifest: dict[str, Any] | None = None
         self.indexes: set[tuple[str, str, str]] = set()
+        self.chat_threads: dict[str, dict[str, Any]] = {}
+        self.chat_turns: dict[str, list[dict[str, Any]]] = {}
 
     @staticmethod
     def _key(row: Mapping[str, Any], values: Mapping[str, object]) -> str:
@@ -95,6 +97,12 @@ class InMemoryGraph:
                     staging_extractor_version=None,
                     stage_status="rolled_back" if "rolled_back" in query else "recovered",
                 )
+        elif "MERGE (t:ChatThread" in query and "CREATE (c:ChatTurn" in query:
+            return FakeResult([[self._write_chat_turn(values)]])
+        elif "ChatTurn" in query and "DETACH DELETE c" in query:
+            self._delete_chat_turns(values, trim="cutoff_seq" in values)
+        elif "ChatThread" in query and "DETACH DELETE t" in query:
+            self._delete_chat_threads(values)
         else:
             raise RuntimeError(f"fake does not implement query: {query}")
         return FakeResult([])
@@ -201,8 +209,72 @@ class InMemoryGraph:
                 continue
             del records[key]
 
+    def _write_chat_turn(self, values: Mapping[str, object]) -> int:
+        thread_key = str(values["thread_key"])
+        thread = self.chat_threads.setdefault(
+            thread_key,
+            {
+                "workspace_id": values["workspace_id"],
+                "thread_id": values["thread_id"],
+                "created_at": values["created_at"],
+                "next_seq": 0,
+            },
+        )
+        thread["next_seq"] += 1
+        seq = thread["next_seq"]
+        self.chat_turns.setdefault(thread_key, []).append(
+            {
+                "id": values["turn_id"],
+                "seq": seq,
+                "query": values["query_text"],
+                "response_json": values["response_json"],
+                "created_at": values["created_at"],
+            }
+        )
+        return seq
+
+    def _delete_chat_turns(self, values: Mapping[str, object], *, trim: bool) -> None:
+        if "thread_key" in values:
+            thread_key = str(values["thread_key"])
+            rows = self.chat_turns.get(thread_key, [])
+            if trim:
+                cutoff = int(values["cutoff_seq"])
+                self.chat_turns[thread_key] = [row for row in rows if row["seq"] > cutoff]
+            else:
+                self.chat_turns.pop(thread_key, None)
+        else:
+            for key, thread in list(self.chat_threads.items()):
+                if thread["workspace_id"] == values["workspace_id"]:
+                    self.chat_turns.pop(key, None)
+
+    def _delete_chat_threads(self, values: Mapping[str, object]) -> None:
+        if "thread_key" in values:
+            self.chat_threads.pop(str(values["thread_key"]), None)
+        else:
+            for key, thread in list(self.chat_threads.items()):
+                if thread["workspace_id"] == values["workspace_id"]:
+                    self.chat_threads.pop(key, None)
+
     def ro_query(self, query: str, params: Mapping[str, object] | None = None, timeout=None):
         values = dict(params or {})
+        if "c.id, c.seq, c.query, c.response_json, c.created_at" in query:
+            thread_key = str(values["thread_key"])
+            rows = [
+                row
+                for row in self.chat_turns.get(thread_key, [])
+                if self.chat_threads.get(thread_key, {}).get("workspace_id") == values["workspace_id"]
+            ]
+            rows.sort(key=lambda row: row["seq"])
+            return FakeResult(
+                [[row["id"], row["seq"], row["query"], row["response_json"], row["created_at"]] for row in rows]
+            )
+        if "MATCH (t:ChatThread {workspace_id: $workspace_id}) RETURN count(t)" in query:
+            count = sum(
+                1
+                for thread in self.chat_threads.values()
+                if thread["workspace_id"] == values["workspace_id"]
+            )
+            return FakeResult([[count]])
         if "MATCH (seed:KnowledgeNode" in query:
             return FakeResult(self._one_hop_expansion(values))
         if "MATCH (m:SourceManifest" in query:
