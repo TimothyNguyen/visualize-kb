@@ -21,6 +21,14 @@ from kb_core_ui.rag.normalizer import (
     RejectedRecord,
     normalize_kb_core_graph,
 )
+from kb_core_ui.rag.falkordb_adapter import (
+    AdapterError,
+    AdapterHealth,
+    FalkorDBAdapter,
+    FalkorDBDriver,
+    UnsafeCypherError,
+    validate_read_only_cypher,
+)
 from kb_core_ui.rag.workspaces import (
     RUN_CANCELLED,
     RUN_FAILED,
@@ -60,6 +68,12 @@ __all__ = [
     "NormalizationResult",
     "RejectedRecord",
     "normalize_kb_core_graph",
+    "AdapterError",
+    "AdapterHealth",
+    "FalkorDBAdapter",
+    "FalkorDBDriver",
+    "UnsafeCypherError",
+    "validate_read_only_cypher",
     "RUN_CANCELLED",
     "RUN_FAILED",
     "RUN_QUEUED",
