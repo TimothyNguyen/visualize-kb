@@ -29,6 +29,6 @@ def test_dynamic_rag_workflow_composes_t1_through_t4(tmp_path: Path) -> None:
     )
     assert delete_stage["details"] == {
         "deleted_source": "repo",
-        "remaining_nodes": 2,
+        "remaining_nodes": 3,
         "source_ids": ["docs"],
     }

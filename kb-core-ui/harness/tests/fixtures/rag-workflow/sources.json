@@ -43,33 +43,14 @@
       "id": "docs",
       "kind": "document_set",
       "uri": "fixture://docs",
-      "graph": {
-        "nodes": [
-          {
-            "id": "design.md:Workspace",
-            "label": "Workspace",
-            "kind": "concept",
-            "source_location": "design.md#workspace",
-            "description": "Workspace groups repositories and documents.",
-            "_origin": "llm"
-          },
-          {
-            "id": "design.md:Graph",
-            "label": "Knowledge Graph",
-            "kind": "concept",
-            "source_location": "design.md#graph",
-            "description": "Knowledge graph stores extracted relationships.",
-            "_origin": "llm"
-          }
-        ],
-        "edges": [
-          {
-            "source": "design.md:Workspace",
-            "target": "design.md:Graph",
-            "kind": "owns"
-          }
-        ]
-      }
+      "documents": [
+        {
+          "title": "Workspace Design",
+          "text": "Workspace groups repositories and documents. Workspace owns a Knowledge Graph containing extracted relationships.",
+          "source_location": "design.md",
+          "source_uri": "fixture://docs/design.md"
+        }
+      ]
     }
   ],
   "expected_rejections": {

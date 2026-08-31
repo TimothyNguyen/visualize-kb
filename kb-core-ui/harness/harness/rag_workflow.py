@@ -11,15 +11,20 @@ import time
 from typing import Any, Callable
 
 from kb_core_ui.rag import (
+    DocumentSetIngestor,
     FalkorDBAdapter,
+    GraphDocument,
+    GraphDocumentNode,
+    GraphDocumentRelationship,
     RagConfig,
     ReconcileError,
     RUN_FAILED,
     RUN_RUNNING,
     SOURCE_READY,
+    RepoGraphIngestor,
+    SourceDocument,
     SourceReconciler,
     WorkspaceRegistry,
-    normalize_kb_core_graph,
 )
 
 from harness.rag_fakes import InMemoryDriver
@@ -27,7 +32,7 @@ from harness.rag_fakes import InMemoryDriver
 REPORT_SCHEMA_VERSION = "kb-core.rag-harness.v1"
 REQUIRED_STAGES = (
     "workspace_lifecycle",
-    "normalize_validate",
+    "source_ingestion",
     "falkordb_reconcile",
     "idempotent_reconcile",
     "refresh_retry_reconcile",
@@ -113,6 +118,25 @@ class _FailStageOnce:
             raise RuntimeError("injected post-stage failure")
 
 
+class _FixtureDocumentExtractor:
+    extractor_version = "harness-graphrag.v1"
+
+    def extract(self, chunk) -> GraphDocument:
+        nodes = []
+        if "Workspace" in chunk.text:
+            nodes.append(GraphDocumentNode("workspace", "Workspace", "CONCEPT", "Source scope"))
+        if "Knowledge Graph" in chunk.text:
+            nodes.append(
+                GraphDocumentNode("knowledge-graph", "Knowledge Graph", "CONCEPT", "Graph facts")
+            )
+        relationships = []
+        if len(nodes) == 2:
+            relationships.append(
+                GraphDocumentRelationship("workspace", "knowledge-graph", "OWNS")
+            )
+        return GraphDocument(tuple(nodes), tuple(relationships))
+
+
 def execute_rag_workflow(
     *, backend: str, fixture_path: Path, work_dir: Path, report_path: Path
 ) -> dict[str, Any]:
@@ -142,18 +166,30 @@ def execute_rag_workflow(
         state.update({"fixture": fixture, "workspace": workspace, "runs": runs})
         return {"workspace_id": workspace.id, "sources": sorted(runs)}
 
-    def normalize_stage() -> dict[str, Any]:
+    def ingestion_stage() -> dict[str, Any]:
         envelopes = {}
         rejected = {}
+        formats = {}
         for source in state["fixture"]["sources"]:
-            result = normalize_kb_core_graph(
-                source["graph"],
-                workspace_id=state["workspace"].id,
-                source_id=source["id"],
-                source_uri=source["uri"],
-            )
+            if source["kind"] in {"local_repo", "github_repo"}:
+                result = RepoGraphIngestor().ingest(
+                    source["graph"],
+                    workspace_id=state["workspace"].id,
+                    source_id=source["id"],
+                    source_uri=source["uri"],
+                )
+            else:
+                documents = [SourceDocument(**document) for document in source["documents"]]
+                result = DocumentSetIngestor(
+                    _FixtureDocumentExtractor(), chunk_size=256, chunk_overlap=32
+                ).ingest(
+                    documents,
+                    workspace_id=state["workspace"].id,
+                    source_id=source["id"],
+                )
             envelopes[source["id"]] = result.envelope
             rejected[source["id"]] = [item.reason for item in result.rejected]
+            formats[source["id"]] = result.envelope.metadata["input_format"]
         expected_rejections = state["fixture"].get("expected_rejections", {})
         if rejected != expected_rejections:
             raise WorkflowFailure(
@@ -164,6 +200,7 @@ def execute_rag_workflow(
             "nodes": sum(len(value.nodes) for value in envelopes.values()),
             "relationships": sum(len(value.relationships) for value in envelopes.values()),
             "rejected": rejected,
+            "formats": formats,
         }
 
     def reconcile_stage() -> dict[str, Any]:
@@ -214,7 +251,7 @@ def execute_rag_workflow(
             }
         ]
         refreshed_graph["links"] = []
-        refreshed = normalize_kb_core_graph(
+        refreshed = RepoGraphIngestor().ingest(
             refreshed_graph,
             workspace_id=state["workspace"].id,
             source_id=source_id,
@@ -298,7 +335,7 @@ def execute_rag_workflow(
 
     stages = (
         ("workspace_lifecycle", workspace_stage),
-        ("normalize_validate", normalize_stage),
+        ("source_ingestion", ingestion_stage),
         ("falkordb_reconcile", reconcile_stage),
         ("idempotent_reconcile", idempotent_stage),
         ("refresh_retry_reconcile", refresh_stage),
