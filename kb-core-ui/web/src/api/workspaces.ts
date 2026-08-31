@@ -136,3 +136,40 @@ export function cancelIngestionRun(workspaceId: string, runId: string): Promise<
 export function getWorkspaceStats(workspaceId: string): Promise<WorkspaceStats> {
   return workspaceRequest(`/${encodeURIComponent(workspaceId)}/stats`)
 }
+
+export interface WorkspaceContextRecord {
+  source_identity: string
+  label: string
+  node_type: string
+  source_id: string
+  text: string
+  source_location: string
+}
+
+export interface WorkspaceContextEdge {
+  source: string
+  target: string
+  relation: string
+  source_id: string
+}
+
+export interface WorkspaceContext {
+  workspace_id: string
+  source_ids: string[]
+  limit: number
+  focus: string
+  records: WorkspaceContextRecord[]
+  edges: WorkspaceContextEdge[]
+}
+
+export function getWorkspaceContext(
+  workspaceId: string,
+  options: { sourceIds?: string[]; limit?: number; focus?: string } = {},
+): Promise<WorkspaceContext> {
+  const query = new URLSearchParams()
+  if (options.limit) query.set("limit", String(options.limit))
+  for (const sourceId of options.sourceIds ?? []) query.append("source", sourceId)
+  if (options.focus) query.set("focus", options.focus)
+  const suffix = query.size > 0 ? `?${query}` : ""
+  return workspaceRequest(`/${encodeURIComponent(workspaceId)}/context${suffix}`)
+}

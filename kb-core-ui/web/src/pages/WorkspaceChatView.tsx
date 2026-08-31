@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
+import { Link } from "react-router-dom"
 import { CopilotChat, CopilotKit, UseAgentUpdate, useAgent } from "@copilotkit/react-core/v2"
 import "@copilotkit/react-core/v2/styles.css"
 
@@ -13,6 +14,7 @@ import {
   type WorkspaceSourceKind,
   type WorkspaceStats,
 } from "../api/workspaces"
+import { citationRoute } from "../utils/workspaceGraph"
 import "./WorkspaceChatView.css"
 
 type AgentState = {
@@ -302,12 +304,23 @@ function WorkspaceChatWorkbench() {
             <strong>{lastAnswer ? `${lastAnswer.citations.length} citations` : "No answer yet"}</strong>
           </div>
           {lastAnswer?.insufficient_evidence && <span className="evidence-warning">Insufficient evidence</span>}
-          {lastAnswer?.citations.map((citation) => (
-            <span className="citation-chip" key={`${citation.evidence_id}-${citation.source_location}`}>
-              <b>{citation.source_id}</b>
-              {citation.source_location || citation.evidence_id}
-            </span>
-          ))}
+          {lastAnswer?.citations.map((citation) => {
+            const route = citationRoute(citation, workspaceId)
+            const label = citation.source_location || citation.evidence_id
+            const key = `${citation.evidence_id}-${citation.source_location}`
+            return route ? (
+              <Link className="citation-chip" key={key} to={route}>
+                <b>{citation.source_id}</b>
+                {label}
+              </Link>
+            ) : (
+              <span className="citation-chip" key={key}>
+                <b>{citation.source_id}</b>
+                {label}
+                <i>no target</i>
+              </span>
+            )
+          })}
         </aside>
       </section>
     </div>

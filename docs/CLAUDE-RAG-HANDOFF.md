@@ -173,6 +173,43 @@ and `pnpm build:runtime` passed.
 chat-scoping conveniences, and the ingestion lifecycle (refresh, delete,
 rejection report, run polling) lives only in `IngestionView`.
 
+## T14 result (graph explorer compatibility) — done
+
+`GET /api/rag/workspaces/{id}/context` now also returns `edges`
+(`source`, `target`, `relation`, `source_id`) and accepts `focus`, so one route
+serves both the workspace overview and the bounded neighbourhood a citation
+opens. `focus` stays a Cypher parameter (`$focus`, then `$identities` for the
+node read) and never becomes query text; records carry `source_location` so a
+node or citation has somewhere to open. No second graph route, no new adapter.
+
+Frontend: `src/utils/workspaceGraph.ts` maps context records onto the explorer's
+`SymbolRef`/`Edge` shapes (unknown `node_type` degrades to `module`, unknown
+relation to `references`) and drops edges whose endpoints fell outside the
+bounded page — node and edge reads are limited independently, so a dangling edge
+is normal and would otherwise break dagre layout. `citationRoute` prefers
+`/file/<path>` (stripping `#fragment` and a trailing line number), falls back to
+`/graph?workspace=…&symbol=…`, and returns `null` so the chip can say
+"no target" instead of linking nowhere. `GraphPageView` gains a `?workspace=`
+mode; without that param it is the old static path unchanged, and the
+static-index focus search and "Load full graph" button are hidden in workspace
+mode because neither applies to FalkorDB identities.
+
+Required harness stage `graph_explorer_compatibility` (stage count now 19)
+indexes a real repo into SQLite and serves it three ways over loopback HTTP:
+RAG-disabled API-only server (legacy `/api/graph`, `/api/graph/subgraph`,
+`/api/tree`, `/api/stats`, `/api/search` all 200; `/api/rag/workspaces` and
+`/api/rag/agent` both 404 — checked without `web_dir`, since the SPA fallback
+would otherwise mask a route that does not exist), RAG-disabled SPA server
+serving `/kb-core-out/graph.json` byte-identical, then a RAG-enabled server
+where the legacy routes and the static export still hold while the workspace
+overview and a focused context answer correctly. The fake driver in
+`harness/rag_fakes.py` learned the RELATED edge read (translating record ids
+back to source identities) and the `$identities` node read.
+
+Verification: Python 218 passed; harness 128 passed; fake RAG workflow 19/19;
+pinned `falkordb/falkordb:v4.20.4` workflow 19/19; web 57 passed; lint exited 0;
+`tsc -b`, `pnpm build`, and `pnpm build:runtime` passed.
+
 ## Non-Negotiable Workflow
 
 For every remaining task:

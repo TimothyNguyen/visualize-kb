@@ -54,8 +54,15 @@ class _Manager:
     def stats(self, workspace_id):
         return {"workspace_id": workspace_id, "nodes": 3, "relationships": 2, "source_ids": ["repo"]}
 
-    def graph_context(self, workspace_id, source_ids=(), limit=50):
-        return {"workspace_id": workspace_id, "limit": limit, "source_ids": list(source_ids), "records": []}
+    def graph_context(self, workspace_id, source_ids=(), limit=50, focus=""):
+        return {
+            "workspace_id": workspace_id,
+            "limit": limit,
+            "source_ids": list(source_ids),
+            "focus": focus,
+            "records": [],
+            "edges": [],
+        }
 
 
 def test_workspace_http_resource_contract(tmp_path):
@@ -79,6 +86,8 @@ def test_workspace_http_resource_contract(tmp_path):
         assert request(app, "GET", "/api/rag/workspaces/alpha/runs/run_1")[1]["id"] == "run_1"
         assert request(app, "POST", "/api/rag/workspaces/alpha/runs/run_1/cancel", b"{}")[1]["status"] == "cancelled"
         assert request(app, "GET", "/api/rag/workspaces/alpha/context?limit=20&source=repo")[1]["limit"] == 20
+        focused = request(app, "GET", "/api/rag/workspaces/alpha/context?focus=src%2Fa.py%3AMain")[1]
+        assert focused["focus"] == "src/a.py:Main"
 
 
 def test_workspace_cli_uses_same_manager_contract():

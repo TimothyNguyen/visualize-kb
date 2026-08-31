@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ApiRequestError } from "./client"
-import { addWorkspaceSource, createWorkspace, listWorkspaces, startWorkspaceIngestion } from "./workspaces"
+import {
+  addWorkspaceSource,
+  createWorkspace,
+  getWorkspaceContext,
+  listWorkspaces,
+  startWorkspaceIngestion,
+} from "./workspaces"
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -49,6 +55,17 @@ describe("workspace API", () => {
       uri: "C:/src/repo",
       ref: "",
     })
+  })
+
+  it("asks for graph context through the backend, with the focus escaped", async () => {
+    mockResponse({ records: [], edges: [] })
+
+    await getWorkspaceContext("alpha", { focus: "src/a.py:Main", sourceIds: ["repo"], limit: 20 })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/rag/workspaces/alpha/context?limit=20&source=repo&focus=src%2Fa.py%3AMain",
+      undefined,
+    )
   })
 
   it("surfaces server validation messages", async () => {

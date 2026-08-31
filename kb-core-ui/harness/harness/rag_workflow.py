@@ -45,6 +45,7 @@ from kb_core_ui.rag import (
     WorkspaceRegistry,
     WorkspaceManager,
 )
+from kb_core_ui.indexer import index
 from kb_core_ui.rag.coordinator import IngestionCoordinator
 from kb_core_ui.server import Server
 from kb_core_ui.server.httpd import listen_and_serve
@@ -69,6 +70,7 @@ REQUIRED_STAGES = (
     "workspace_management",
     "ingestion_coordinator",
     "ingestion_http_lifecycle",
+    "graph_explorer_compatibility",
     "source_delete_isolation",
     "registry_reopen",
     "graph_cleanup",
@@ -1166,6 +1168,159 @@ def execute_rag_workflow(
             "error_statuses": list(statuses),
         }
 
+    def graph_explorer_compatibility_stage() -> dict[str, Any]:
+        """The explorer has to keep working from the static export with GraphRAG
+        off, and the same server has to answer the bounded workspace graph a
+        citation opens once it is on."""
+        repo_dir = work_dir / "compat-repo"
+        (repo_dir / "pkg").mkdir(parents=True, exist_ok=True)
+        (repo_dir / "pkg" / "a.py").write_text(
+            "def helper(value):\n    return value\n\n\ndef entry(value):\n    return helper(value)\n",
+            encoding="utf-8",
+        )
+        web_dir = work_dir / "compat-web"
+        (web_dir / "kb-core-out").mkdir(parents=True, exist_ok=True)
+        (web_dir / "index.html").write_text("<!doctype html><title>kb</title>", encoding="utf-8")
+        static_graph = {
+            "nodes": [
+                {
+                    "id": "pkg/a.py:entry",
+                    "name": "entry",
+                    "kind": "function",
+                    "filePath": "pkg/a.py",
+                    "startLine": 5,
+                    "endLine": 6,
+                }
+            ],
+            "edges": [],
+        }
+        (web_dir / "kb-core-out" / "graph.json").write_text(
+            json.dumps(static_graph), encoding="utf-8"
+        )
+
+        source_dir = work_dir / "compat-source"
+        (source_dir / "kb-core-out").mkdir(parents=True, exist_ok=True)
+        (source_dir / "kb-core-out" / "graph.json").write_text(
+            json.dumps(state["fixture"]["sources"][0]["graph"]), encoding="utf-8"
+        )
+
+        config = _config(backend)
+
+        def adapter_factory(selected_workspace_id: str):
+            driver = state.get("driver") if backend == "fake" else None
+            return FalkorDBAdapter(config, selected_workspace_id, driver=driver)
+
+        manager = WorkspaceManager(
+            registry,
+            config,
+            adapter_factory=adapter_factory,
+            ingestion_coordinator=IngestionCoordinator(
+                registry, adapter_factory=adapter_factory, embeddings=_HarnessEmbeddings()
+            ),
+        )
+
+        def get(url: str) -> tuple[int, bytes]:
+            try:
+                with urllib.request.urlopen(url, timeout=10) as response:
+                    return response.status, response.read()
+            except urllib.error.HTTPError as exc:
+                return exc.code, exc.read()
+
+        def get_json(url: str) -> tuple[int, Any]:
+            status, body = get(url)
+            return status, json.loads(body.decode("utf-8"))
+
+        def check_legacy(origin: str, label: str) -> dict[str, Any]:
+            status, graph = get_json(f"{origin}/api/graph")
+            if status != 200 or not graph["nodes"]:
+                raise WorkflowFailure(f"{label}: /api/graph broke: {status} {graph!r}")
+            symbol = graph["nodes"][0]["id"]
+            status, subgraph = get_json(
+                f"{origin}/api/graph/subgraph?symbol={urllib.parse.quote(symbol, safe='')}&depth=1"
+            )
+            if status != 200 or subgraph["center"] != symbol:
+                raise WorkflowFailure(f"{label}: /api/graph/subgraph broke: {status} {subgraph!r}")
+            for path in ("/api/tree", "/api/stats", "/api/search?q=entry"):
+                if get(f"{origin}{path}")[0] != 200:
+                    raise WorkflowFailure(f"{label}: {path} broke")
+            return {"nodes": len(graph["nodes"]), "subgraph_center": subgraph["center"]}
+
+        def check_static(origin: str, label: str) -> None:
+            # The explorer's default source is a file the server hands back
+            # as-is, so it must survive byte for byte either way.
+            status, exported = get(f"{origin}/kb-core-out/graph.json")
+            if status != 200 or json.loads(exported.decode("utf-8")) != static_graph:
+                raise WorkflowFailure(f"{label}: static graph.json changed: {status}")
+
+        store = Store(str(work_dir / "compat.db"))
+        index(str(repo_dir), store)
+        try:
+            # No web_dir here: an SPA server answers every unknown path with
+            # index.html, which would hide a GraphRAG route that never existed.
+            disabled = Server(store, str(repo_dir))
+            with _serving(disabled, "rag-compat-disabled") as origin:
+                legacy_disabled = check_legacy(origin, "rag disabled")
+                rag_statuses = (
+                    get(f"{origin}/api/rag/workspaces")[0],
+                    get(f"{origin}/api/rag/agent")[0],
+                )
+                if rag_statuses != (404, 404):
+                    raise WorkflowFailure(f"rag routes leaked while disabled: {rag_statuses!r}")
+
+            disabled_spa = Server(store, str(repo_dir), str(web_dir))
+            with _serving(disabled_spa, "rag-compat-static") as origin:
+                check_static(origin, "rag disabled")
+
+            workspace_id = "rag-graph-compat"
+            enabled = Server(store, str(repo_dir), str(web_dir), workspace_manager=manager)
+            with _serving(enabled, "rag-compat-enabled") as origin:
+                legacy_enabled = check_legacy(origin, "rag enabled")
+                check_static(origin, "rag enabled")
+                base = f"{origin}/api/rag/workspaces"
+                manager.create_workspace(workspace_id, "Graph compatibility")
+                manager.add_source(workspace_id, "repo", "local_repo", str(source_dir))
+                run = manager.start_ingestion(workspace_id, "repo")
+                if run["status"] != "succeeded":
+                    raise WorkflowFailure(f"compat ingestion failed: {run!r}")
+
+                status, overview = get_json(f"{base}/{workspace_id}/context?limit=50")
+                if status != 200 or not overview["records"] or not overview["edges"]:
+                    raise WorkflowFailure(f"workspace overview empty: {status} {overview!r}")
+                identities = {record["source_identity"] for record in overview["records"]}
+                if not all(
+                    edge["source"] in identities and edge["target"] in identities
+                    for edge in overview["edges"]
+                ):
+                    raise WorkflowFailure(f"overview edges point outside its nodes: {overview!r}")
+                if not all(record["source_location"] for record in overview["records"]):
+                    raise WorkflowFailure("records lost the location a citation opens")
+
+                focus = overview["edges"][0]["source"]
+                status, focused = get_json(
+                    f"{base}/{workspace_id}/context?focus={urllib.parse.quote(focus, safe='')}"
+                )
+                if status != 200 or focused["focus"] != focus or not focused["edges"]:
+                    raise WorkflowFailure(f"focused context empty: {status} {focused!r}")
+                if not all(
+                    focus in (edge["source"], edge["target"]) for edge in focused["edges"]
+                ):
+                    raise WorkflowFailure(f"focus did not bound the subgraph: {focused!r}")
+                if len(focused["records"]) > len(overview["records"]):
+                    raise WorkflowFailure("focused context returned more nodes than the overview")
+                manager.delete_workspace(workspace_id)
+        finally:
+            store.close()
+        return {
+            "static_graph_served": True,
+            "legacy_disabled": legacy_disabled,
+            "legacy_enabled": legacy_enabled,
+            "rag_routes_absent_when_disabled": list(rag_statuses),
+            "workspace_records": len(overview["records"]),
+            "workspace_edges": len(overview["edges"]),
+            "focused_records": len(focused["records"]),
+            "focused_edges": len(focused["edges"]),
+        }
+
     def reopen_stage() -> dict[str, Any]:
         reopened = WorkspaceRegistry(str(work_dir / "workspaces.json")).get(state["workspace"].id)
         statuses = {source_id: source.status for source_id, source in reopened.sources.items()}
@@ -1198,6 +1353,7 @@ def execute_rag_workflow(
         ("workspace_management", management_stage),
         ("ingestion_coordinator", coordinator_stage),
         ("ingestion_http_lifecycle", ingestion_http_lifecycle_stage),
+        ("graph_explorer_compatibility", graph_explorer_compatibility_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),
         ("graph_cleanup", cleanup_stage),

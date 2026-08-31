@@ -98,43 +98,100 @@ class WorkspaceManager:
         }
 
     def graph_context(
-        self, workspace_id: str, *, source_ids: Sequence[str] = (), limit: int = 50
+        self,
+        workspace_id: str,
+        *,
+        source_ids: Sequence[str] = (),
+        limit: int = 50,
+        focus: str = "",
     ) -> dict[str, object]:
+        """Nodes plus the relationships between them, so a caller can draw the
+        workspace graph. ``focus`` narrows both to the neighbourhood of one
+        node identity, which is the bounded subgraph a citation opens."""
         self.registry.get(workspace_id)
         if limit < 1 or limit > self.max_context_records:
             raise WorkspaceError(
                 f"context limit must be between 1 and {self.max_context_records}"
             )
         selected = sorted(set(source_ids))
-        query = "MATCH (n:KnowledgeNode {workspace_id: $workspace_id}) "
-        if selected:
-            query += "WHERE n.source_id IN $source_ids "
-        query += (
-            "RETURN n.source_identity, n.label, n.node_type, n.source_id, n.text "
-            "ORDER BY n.source_id, n.source_identity LIMIT $limit"
+
+        edge_query = (
+            "MATCH (a:KnowledgeNode {workspace_id: $workspace_id})"
+            "-[r:RELATED {workspace_id: $workspace_id}]->"
+            "(b:KnowledgeNode {workspace_id: $workspace_id}) "
         )
-        params: dict[str, object] = {"workspace_id": workspace_id}
+        edge_filters = []
+        edge_params: dict[str, object] = {"workspace_id": workspace_id}
         if selected:
-            params["source_ids"] = selected
-        params["limit"] = limit
-        rows = self._with_adapter(
-            workspace_id, lambda adapter: adapter.read_query(query, params)
+            edge_filters.append("r.source_id IN $source_ids")
+            edge_params["source_ids"] = selected
+        if focus:
+            edge_filters.append("(a.source_identity = $focus OR b.source_identity = $focus)")
+            edge_params["focus"] = focus
+        if edge_filters:
+            edge_query += "WHERE " + " AND ".join(edge_filters) + " "
+        edge_query += (
+            "RETURN a.source_identity, b.source_identity, r.relationship_type, r.source_id "
+            "ORDER BY a.source_identity, b.source_identity LIMIT $limit"
         )
-        records = [
-            {
-                "source_identity": str(row[0]),
-                "label": str(row[1]),
-                "node_type": str(row[2]),
-                "source_id": str(row[3]),
-                "text": str(row[4]),
-            }
-            for row in rows
-        ]
+        edge_params["limit"] = limit
+
+        node_params: dict[str, object] = {"workspace_id": workspace_id}
+        if focus:
+            node_query = (
+                "MATCH (n:KnowledgeNode {workspace_id: $workspace_id}) "
+                "WHERE n.source_identity IN $identities "
+                "RETURN n.source_identity, n.label, n.node_type, n.source_id, n.text, "
+                "n.source_location "
+                "ORDER BY n.source_id, n.source_identity LIMIT $limit"
+            )
+        else:
+            node_query = "MATCH (n:KnowledgeNode {workspace_id: $workspace_id}) "
+            if selected:
+                node_query += "WHERE n.source_id IN $source_ids "
+                node_params["source_ids"] = selected
+            node_query += (
+                "RETURN n.source_identity, n.label, n.node_type, n.source_id, n.text, "
+                "n.source_location "
+                "ORDER BY n.source_id, n.source_identity LIMIT $limit"
+            )
+        node_params["limit"] = limit
+
+        def read(adapter):
+            edge_rows = adapter.read_query(edge_query, edge_params)
+            if focus:
+                identities = {focus}
+                for row in edge_rows:
+                    identities.update({str(row[0]), str(row[1])})
+                node_params["identities"] = sorted(identities)
+            return edge_rows, adapter.read_query(node_query, node_params)
+
+        edge_rows, node_rows = self._with_adapter(workspace_id, read)
         return {
             "workspace_id": workspace_id,
             "source_ids": selected,
             "limit": limit,
-            "records": records,
+            "focus": focus,
+            "records": [
+                {
+                    "source_identity": str(row[0]),
+                    "label": str(row[1]),
+                    "node_type": str(row[2]),
+                    "source_id": str(row[3]),
+                    "text": str(row[4]),
+                    "source_location": str(row[5]),
+                }
+                for row in node_rows
+            ],
+            "edges": [
+                {
+                    "source": str(row[0]),
+                    "target": str(row[1]),
+                    "relation": str(row[2]),
+                    "source_id": str(row[3]),
+                }
+                for row in edge_rows
+            ],
         }
 
     def _with_adapter(self, workspace_id: str, operation):

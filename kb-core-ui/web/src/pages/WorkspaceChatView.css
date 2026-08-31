@@ -274,6 +274,20 @@
   font-size: 10px;
 }
 
+a.citation-chip {
+  text-decoration: none;
+}
+
+a.citation-chip:hover {
+  border-left-color: var(--text);
+  color: var(--text);
+}
+
+.citation-chip i {
+  font-style: normal;
+  opacity: 0.7;
+}
+
 .evidence-warning {
   color: var(--warn);
   font: 10px var(--mono);

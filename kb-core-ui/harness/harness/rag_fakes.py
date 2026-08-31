@@ -312,15 +312,49 @@ class InMemoryGraph:
             return FakeResult(
                 [[len(nodes), len(relationships), sorted({row["source_id"] for row in nodes})]]
             )
+        if "RETURN a.source_identity, b.source_identity, r.relationship_type" in query:
+            # RELATED edges join nodes by record id, so the workspace graph the
+            # explorer draws needs them translated back to source identities.
+            identity_of = {
+                row["id"]: row["source_identity"]
+                for row in self._matches(self.nodes, values, active_only=True)
+            }
+            source_ids = set(values.get("source_ids", []))
+            focus = str(values.get("focus", ""))
+            rows = []
+            for relationship in self._matches(self.relationships, values, active_only=True):
+                if source_ids and relationship["source_id"] not in source_ids:
+                    continue
+                source = identity_of.get(relationship["source"])
+                target = identity_of.get(relationship["target"])
+                if source is None or target is None:
+                    continue
+                if focus and focus not in (source, target):
+                    continue
+                rows.append(
+                    [source, target, relationship["relationship_type"], relationship["source_id"]]
+                )
+            rows.sort(key=lambda row: (row[0], row[1]))
+            return FakeResult(rows[: int(values["limit"])])
         if "RETURN n.source_identity, n.label, n.node_type, n.source_id, n.text" in query:
             source_ids = set(values.get("source_ids", []))
+            identities = set(values.get("identities", []))
             nodes = self._matches(self.nodes, values, active_only=True)
             if source_ids:
                 nodes = [row for row in nodes if row["source_id"] in source_ids]
+            if identities:
+                nodes = [row for row in nodes if row["source_identity"] in identities]
             nodes.sort(key=lambda row: (row["source_id"], row["source_identity"]))
             return FakeResult(
                 [
-                    [row["source_identity"], row["label"], row["node_type"], row["source_id"], row["text"]]
+                    [
+                        row["source_identity"],
+                        row["label"],
+                        row["node_type"],
+                        row["source_id"],
+                        row["text"],
+                        row.get("source_location", ""),
+                    ]
                     for row in nodes[: int(values["limit"])]
                 ]
             )

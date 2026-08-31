@@ -5,14 +5,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { GraphResponse } from "../api/types"
 import { GraphPageView } from "./GraphPageView"
 
-const { getGraph, getGraphOverview, getSubgraph, search } = vi.hoisted(() => ({
+const { getGraph, getGraphOverview, getSubgraph, search, getWorkspaceContext } = vi.hoisted(() => ({
   getGraph: vi.fn(),
   getGraphOverview: vi.fn(),
   getSubgraph: vi.fn(),
   search: vi.fn(),
+  getWorkspaceContext: vi.fn(),
 }))
 
 vi.mock("../api/client", () => ({ getGraph, getGraphOverview, getSubgraph, search }))
+vi.mock("../api/workspaces", () => ({ getWorkspaceContext }))
 
 const overview: GraphResponse = {
   nodes: [{ id: "a", name: "a", kind: "function", filePath: "a.ts", startLine: 1, endLine: 1 }],
@@ -45,6 +47,7 @@ describe("GraphPageView overview -> full graph load", () => {
     getGraphOverview.mockReset().mockResolvedValue(overview)
     getSubgraph.mockReset()
     search.mockReset().mockResolvedValue([])
+    getWorkspaceContext.mockReset()
   })
 
   it("loads the overview graph first, without fetching the full graph", async () => {
@@ -81,5 +84,77 @@ describe("GraphPageView overview -> full graph load", () => {
     expect(getSubgraph).toHaveBeenCalledWith("a", 2)
     expect(getGraphOverview).not.toHaveBeenCalled()
     expect(getGraph).not.toHaveBeenCalled()
+  })
+})
+
+describe("GraphPageView workspace mode", () => {
+  const workspaceContext = {
+    workspace_id: "alpha",
+    source_ids: [],
+    limit: 200,
+    focus: "",
+    records: [
+      {
+        source_identity: "src/a.py:Main",
+        label: "Main",
+        node_type: "CLASS",
+        source_id: "repo",
+        text: "",
+        source_location: "src/a.py",
+      },
+    ],
+    edges: [],
+  }
+
+  beforeEach(() => {
+    getGraph.mockReset().mockResolvedValue(full)
+    getGraphOverview.mockReset().mockResolvedValue(overview)
+    getSubgraph.mockReset()
+    search.mockReset().mockResolvedValue([])
+    getWorkspaceContext.mockReset().mockResolvedValue(workspaceContext)
+  })
+
+  it("draws the workspace graph instead of the static export", async () => {
+    render(
+      <MemoryRouter initialEntries={["/graph?workspace=alpha"]}>
+        <GraphPageView />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText("All (1)")).toBeInTheDocument()
+    expect(getWorkspaceContext).toHaveBeenCalledWith("alpha", { focus: "" })
+    expect(getGraphOverview).not.toHaveBeenCalled()
+  })
+
+  it("asks for the bounded subgraph when a citation focuses a node", async () => {
+    render(
+      <MemoryRouter initialEntries={["/graph?workspace=alpha&symbol=src%2Fa.py%3AMain"]}>
+        <GraphPageView />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText("All (1)")
+    expect(getWorkspaceContext).toHaveBeenCalledWith("alpha", { focus: "src/a.py:Main" })
+    expect(getSubgraph).not.toHaveBeenCalled()
+  })
+
+  it("reports a missing workspace instead of leaving a dead view", async () => {
+    getWorkspaceContext.mockRejectedValue(new Error("workspace 'alpha' does not exist"))
+
+    render(
+      <MemoryRouter initialEntries={["/graph?workspace=alpha"]}>
+        <GraphPageView />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/does not exist/)).toBeInTheDocument()
+  })
+
+  it("leaves the static graph path untouched when no workspace is selected", async () => {
+    renderPage()
+
+    await screen.findByText("All (1)")
+    expect(getWorkspaceContext).not.toHaveBeenCalled()
+    expect(getGraphOverview).toHaveBeenCalledTimes(1)
   })
 })

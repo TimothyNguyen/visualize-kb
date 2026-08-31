@@ -35,7 +35,9 @@ class _Adapter:
         self.queries.append((query, values))
         if "count(DISTINCT n)" in query:
             return [[3, 2, ["docs", "repo"]]]
-        return [["node-1", "Parser", "SYMBOL", "repo", "Parses code"]]
+        if ":RELATED" in query:
+            return [["node-1", "node-2", "CALLS", "repo"]]
+        return [["node-1", "Parser", "SYMBOL", "repo", "Parses code", "src/parser.py"]]
 
     def close(self):
         pass
@@ -112,9 +114,49 @@ def test_health_stats_and_bounded_context(manager):
     context = manager.graph_context("alpha", source_ids=["repo"], limit=25)
     assert context["limit"] == 25
     assert context["records"][0]["source_id"] == "repo"
-    query, params = manager.adapters["alpha"].queries[-1]
+    query, params = _query_containing(manager, "n.node_type")
     assert "$workspace_id" in query and "LIMIT $limit" in query
     assert params == {"workspace_id": "alpha", "source_ids": ["repo"], "limit": 25}
 
     with pytest.raises(WorkspaceError, match="between 1 and 200"):
         manager.graph_context("alpha", limit=201)
+
+
+def _query_containing(manager, needle: str):
+    return next(
+        (query, params) for query, params in manager.adapters["alpha"].queries if needle in query
+    )
+
+
+def test_context_carries_edges_so_a_workspace_graph_can_be_drawn(manager):
+    manager.create_workspace("alpha", "Alpha")
+    manager.add_source("alpha", "repo", "local_repo", ".")
+
+    context = manager.graph_context("alpha", source_ids=["repo"], limit=25)
+
+    assert context["focus"] == ""
+    # source_location is what lets a citation or graph node open the file view.
+    assert context["records"][0]["source_location"] == "src/parser.py"
+    assert context["edges"] == [
+        {"source": "node-1", "target": "node-2", "relation": "CALLS", "source_id": "repo"}
+    ]
+    edge_query, edge_params = _query_containing(manager, ":RELATED")
+    assert "LIMIT $limit" in edge_query
+    assert edge_params == {"workspace_id": "alpha", "source_ids": ["repo"], "limit": 25}
+
+
+def test_focused_context_returns_only_the_bounded_subgraph(manager):
+    manager.create_workspace("alpha", "Alpha")
+    manager.add_source("alpha", "repo", "local_repo", ".")
+
+    context = manager.graph_context("alpha", focus="node-1", limit=25)
+
+    assert context["focus"] == "node-1"
+    edge_query, edge_params = _query_containing(manager, ":RELATED")
+    # The focus is an operator-supplied identity, so it stays a parameter and
+    # never becomes part of the query text.
+    assert "$focus" in edge_query and "node-1" not in edge_query
+    assert edge_params["focus"] == "node-1"
+    node_query, node_params = _query_containing(manager, "$identities")
+    assert "LIMIT $limit" in node_query
+    assert node_params["identities"] == ["node-1", "node-2"]

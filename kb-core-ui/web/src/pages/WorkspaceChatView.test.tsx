@@ -4,6 +4,7 @@
 
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const setState = vi.fn()
@@ -53,6 +54,14 @@ function lastState(): Record<string, unknown> {
   return setState.mock.calls.at(-1)![0]
 }
 
+function renderChat() {
+  return render(
+    <MemoryRouter>
+      <WorkspaceChatView />
+    </MemoryRouter>,
+  )
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   agent.state = {}
@@ -62,7 +71,7 @@ beforeEach(() => {
 
 describe("WorkspaceChatView", () => {
   it("scopes the agent to the first workspace once workspaces load", async () => {
-    render(<WorkspaceChatView />)
+    renderChat()
 
     await waitFor(() => expect(setState).toHaveBeenCalled())
     expect(lastState()).toMatchObject({ workspace_id: "alpha", strategy: "auto" })
@@ -70,7 +79,7 @@ describe("WorkspaceChatView", () => {
   })
 
   it("re-scopes the agent when the workspace is switched", async () => {
-    render(<WorkspaceChatView />)
+    renderChat()
     await screen.findByRole("option", { name: "Beta" })
 
     await userEvent.selectOptions(screen.getByLabelText("Workspace"), "beta")
@@ -80,7 +89,7 @@ describe("WorkspaceChatView", () => {
   })
 
   it("sends the selected retrieval strategy to the agent", async () => {
-    render(<WorkspaceChatView />)
+    renderChat()
     await waitFor(() => expect(setState).toHaveBeenCalled())
 
     await userEvent.selectOptions(screen.getByLabelText(/Retrieval/), "multi_path")
@@ -89,7 +98,7 @@ describe("WorkspaceChatView", () => {
   })
 
   it("narrows retrieval scope when a source is unchecked", async () => {
-    render(<WorkspaceChatView />)
+    renderChat()
     await screen.findByRole("checkbox", { name: "repo" })
 
     await userEvent.click(screen.getByRole("checkbox", { name: "repo" }))
@@ -105,16 +114,53 @@ describe("WorkspaceChatView", () => {
       },
     }
 
-    render(<WorkspaceChatView />)
+    renderChat()
 
     expect(await screen.findByText("1 citations")).toBeInTheDocument()
     expect(screen.getByText("repo.py:L1")).toBeInTheDocument()
   })
 
+  it("makes a citation open the evidence it points at", async () => {
+    agent.state = {
+      last_answer: {
+        citations: [
+          { evidence_id: "node-repo", source_id: "repo", source_location: "src/store.py:42", origin: "retrieval" },
+          { evidence_id: "node-store", source_id: "repo", source_location: "Store", origin: "retrieval" },
+        ],
+        insufficient_evidence: false,
+      },
+    }
+
+    renderChat()
+
+    expect(await screen.findByRole("link", { name: /src\/store\.py:42/ })).toHaveAttribute(
+      "href",
+      "/file/src/store.py",
+    )
+    expect(screen.getByRole("link", { name: /Store/ })).toHaveAttribute(
+      "href",
+      "/graph?workspace=alpha&symbol=Store",
+    )
+  })
+
+  it("says so instead of linking nowhere when a citation has no target", async () => {
+    agent.state = {
+      last_answer: {
+        citations: [{ evidence_id: "node-repo", source_id: "repo", source_location: "", origin: "retrieval" }],
+        insufficient_evidence: false,
+      },
+    }
+
+    renderChat()
+
+    expect(await screen.findByText("no target")).toBeInTheDocument()
+    expect(screen.queryByRole("link")).toBeNull()
+  })
+
   it("flags a degraded answer that found no supporting evidence", async () => {
     agent.state = { last_answer: { citations: [], insufficient_evidence: true } }
 
-    render(<WorkspaceChatView />)
+    renderChat()
 
     expect(await screen.findByText("Insufficient evidence")).toBeInTheDocument()
   })
@@ -122,7 +168,7 @@ describe("WorkspaceChatView", () => {
   it("surfaces a failed workspace load without rendering chat", async () => {
     listWorkspaces.mockRejectedValue(new Error("workspace backend unavailable"))
 
-    render(<WorkspaceChatView />)
+    renderChat()
 
     expect(await screen.findByRole("alert")).toHaveTextContent("workspace backend unavailable")
     expect(screen.queryByTestId("chat")).toBeNull()
@@ -130,7 +176,7 @@ describe("WorkspaceChatView", () => {
 
   it("reports ingestion failures instead of leaving the button stuck", async () => {
     startWorkspaceIngestion.mockRejectedValue(new Error("ingestion refused"))
-    render(<WorkspaceChatView />)
+    renderChat()
 
     await userEvent.click((await screen.findAllByRole("button", { name: "Ingest" }))[0])
 

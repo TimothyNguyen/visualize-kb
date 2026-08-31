@@ -431,6 +431,7 @@ class Server:
                         workspace_id,
                         source_ids=req.query.get("source", []),
                         limit=limit,
+                        focus=req.get_query("focus") or "",
                     )
                 )
             if len(parts) == 2 and parts[1] == "sources" and req.method == "POST":
