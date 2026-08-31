@@ -29,6 +29,14 @@ from kb_core_ui.rag.falkordb_adapter import (
     UnsafeCypherError,
     validate_read_only_cypher,
 )
+from kb_core_ui.rag.reconciler import (
+    ReconcileError,
+    ReconcileResult,
+    SourceManifest,
+    SourceReconciler,
+    StageCounts,
+    source_version,
+)
 from kb_core_ui.rag.workspaces import (
     RUN_CANCELLED,
     RUN_FAILED,
@@ -74,6 +82,12 @@ __all__ = [
     "FalkorDBDriver",
     "UnsafeCypherError",
     "validate_read_only_cypher",
+    "ReconcileError",
+    "ReconcileResult",
+    "SourceManifest",
+    "SourceReconciler",
+    "StageCounts",
+    "source_version",
     "RUN_CANCELLED",
     "RUN_FAILED",
     "RUN_QUEUED",

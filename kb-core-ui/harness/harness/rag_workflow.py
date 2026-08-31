@@ -13,10 +13,11 @@ from typing import Any, Callable
 from kb_core_ui.rag import (
     FalkorDBAdapter,
     RagConfig,
+    ReconcileError,
     RUN_FAILED,
     RUN_RUNNING,
-    RUN_SUCCEEDED,
     SOURCE_READY,
+    SourceReconciler,
     WorkspaceRegistry,
     normalize_kb_core_graph,
 )
@@ -27,7 +28,9 @@ REPORT_SCHEMA_VERSION = "kb-core.rag-harness.v1"
 REQUIRED_STAGES = (
     "workspace_lifecycle",
     "normalize_validate",
-    "falkordb_upsert",
+    "falkordb_reconcile",
+    "idempotent_reconcile",
+    "refresh_retry_reconcile",
     "scoped_read",
     "source_delete_isolation",
     "registry_reopen",
@@ -86,6 +89,30 @@ def _read_counts(adapter: FalkorDBAdapter) -> tuple[int, list[str]]:
     return int(rows[0][0]), sorted(str(value) for value in rows[0][1])
 
 
+def _source_identities(adapter: FalkorDBAdapter, source_id: str) -> list[str]:
+    rows = adapter.read_query(
+        "MATCH (n:KnowledgeNode {workspace_id: $workspace_id, source_id: $source_id}) "
+        "WHERE coalesce(n.active, true) = true RETURN collect(n.source_identity)",
+        {"source_id": source_id},
+    )
+    return sorted(str(value) for value in rows[0][0])
+
+
+class _FailStageOnce:
+    def __init__(self, adapter: FalkorDBAdapter):
+        self.adapter = adapter
+        self.failed = False
+
+    def __getattr__(self, name: str):
+        return getattr(self.adapter, name)
+
+    def stage_envelope(self, envelope, version: str) -> None:
+        self.adapter.stage_envelope(envelope, version)
+        if not self.failed:
+            self.failed = True
+            raise RuntimeError("injected post-stage failure")
+
+
 def execute_rag_workflow(
     *, backend: str, fixture_path: Path, work_dir: Path, report_path: Path
 ) -> dict[str, Any]:
@@ -139,16 +166,91 @@ def execute_rag_workflow(
             "rejected": rejected,
         }
 
-    def upsert_stage() -> dict[str, Any]:
+    def reconcile_stage() -> dict[str, Any]:
         nonlocal adapter
         driver = InMemoryDriver() if backend == "fake" else None
         adapter = FalkorDBAdapter(_config(backend), state["workspace"].id, driver=driver)
-        for envelope in state["envelopes"].values():
-            adapter.upsert_envelope(envelope)
+        reconciler = SourceReconciler(adapter, registry)
+        results = {}
+        for source_id, envelope in state["envelopes"].items():
+            result = reconciler.reconcile(
+                state["workspace"].id, source_id, state["runs"][source_id], envelope
+            )
+            results[source_id] = result.status
         health = adapter.health()
         if not health.connected or not health.graph_exists:
-            raise WorkflowFailure(f"FalkorDB unhealthy after upsert: {health!r}")
-        return {"graph_name": adapter.graph_name, "health": "connected"}
+            raise WorkflowFailure(f"FalkorDB unhealthy after reconcile: {health!r}")
+        return {"graph_name": adapter.graph_name, "results": results}
+
+    def idempotent_stage() -> dict[str, Any]:
+        assert adapter is not None
+        reconciler = SourceReconciler(adapter, registry)
+        results = {}
+        for source_id, envelope in state["envelopes"].items():
+            run = registry.queue_run(state["workspace"].id, source_id)
+            registry.transition_run(state["workspace"].id, run.id, RUN_RUNNING)
+            result = reconciler.reconcile(
+                state["workspace"].id, source_id, run.id, envelope
+            )
+            results[source_id] = result.status
+        if set(results.values()) != {"unchanged"}:
+            raise WorkflowFailure(f"unchanged replay wrote data: {results!r}")
+        return {"results": results}
+
+    def refresh_stage() -> dict[str, Any]:
+        assert adapter is not None
+        source = state["fixture"]["sources"][0]
+        source_id = source["id"]
+        previous_identities = _source_identities(adapter, source_id)
+        refreshed_graph = json.loads(json.dumps(source["graph"]))
+        refreshed_graph["nodes"] = refreshed_graph["nodes"][1:] + [
+            {
+                "id": "src/search.py:Search",
+                "label": "Search",
+                "file_type": "code",
+                "source_location": "src/search.py:L1",
+                "doc": "Searches graph records.",
+                "_origin": "ast",
+            }
+        ]
+        refreshed_graph["links"] = []
+        refreshed = normalize_kb_core_graph(
+            refreshed_graph,
+            workspace_id=state["workspace"].id,
+            source_id=source_id,
+            source_uri=source["uri"],
+        ).envelope
+
+        failed_run = registry.queue_run(state["workspace"].id, source_id)
+        registry.transition_run(state["workspace"].id, failed_run.id, RUN_RUNNING)
+        try:
+            SourceReconciler(_FailStageOnce(adapter), registry).reconcile(
+                state["workspace"].id, source_id, failed_run.id, refreshed
+            )
+        except ReconcileError:
+            pass
+        else:
+            raise WorkflowFailure("injected reconciliation failure did not fail")
+        if _source_identities(adapter, source_id) != previous_identities:
+            raise WorkflowFailure("failed stage changed active source records")
+
+        retry = registry.queue_run(state["workspace"].id, source_id)
+        registry.transition_run(state["workspace"].id, retry.id, RUN_RUNNING)
+        result = SourceReconciler(adapter, registry).reconcile(
+            state["workspace"].id, source_id, retry.id, refreshed
+        )
+        expected_identities = sorted(node.source_identity for node in refreshed.nodes)
+        actual_identities = _source_identities(adapter, source_id)
+        if actual_identities != expected_identities:
+            raise WorkflowFailure(
+                f"refresh did not replace stale records: {actual_identities!r}"
+            )
+        state["envelopes"][source_id] = refreshed
+        return {
+            "failed_run": "rolled_back",
+            "retry": result.status,
+            "active_identities": actual_identities,
+        }
 
     def read_stage() -> dict[str, Any]:
         assert adapter is not None
@@ -179,8 +281,6 @@ def execute_rag_workflow(
         return {"deleted_source": deleted_source, "remaining_nodes": count, "source_ids": source_ids}
 
     def reopen_stage() -> dict[str, Any]:
-        for run_id in state["runs"].values():
-            registry.transition_run(state["workspace"].id, run_id, RUN_SUCCEEDED)
         reopened = WorkspaceRegistry(str(work_dir / "workspaces.json")).get(state["workspace"].id)
         statuses = {source_id: source.status for source_id, source in reopened.sources.items()}
         if set(statuses.values()) != {SOURCE_READY}:
@@ -199,7 +299,9 @@ def execute_rag_workflow(
     stages = (
         ("workspace_lifecycle", workspace_stage),
         ("normalize_validate", normalize_stage),
-        ("falkordb_upsert", upsert_stage),
+        ("falkordb_reconcile", reconcile_stage),
+        ("idempotent_reconcile", idempotent_stage),
+        ("refresh_retry_reconcile", refresh_stage),
         ("scoped_read", read_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),

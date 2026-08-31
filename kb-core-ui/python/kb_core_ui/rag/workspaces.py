@@ -254,6 +254,25 @@ class WorkspaceRegistry:
         self._save()
         return source
 
+    def publish_source(
+        self,
+        workspace_id: str,
+        source_id: str,
+        content_hash: str,
+        extractor_version: str,
+        active_version: str,
+    ) -> Source:
+        source = self._source(workspace_id, source_id)
+        if not content_hash or not extractor_version or not active_version:
+            raise WorkspaceError("published source metadata is incomplete")
+        source.content_hash = content_hash
+        source.extractor_version = extractor_version
+        source.active_version = active_version
+        source.updated_at = _now()
+        self.get(workspace_id).updated_at = source.updated_at
+        self._save()
+        return source
+
     def queue_run(self, workspace_id: str, source_id: str) -> IngestionRun:
         workspace = self.get(workspace_id)
         source = self._source(workspace_id, source_id)

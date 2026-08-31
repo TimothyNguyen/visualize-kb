@@ -10,6 +10,7 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.contracts import GraphEnvelope
+from kb_core_ui.rag.reconciler import SourceManifest, StageCounts
 from kb_core_ui.rag.workspaces import workspace_graph_name
 
 _WRITE_CLAUSES = re.compile(
@@ -200,6 +201,232 @@ class FalkorDBAdapter:
             raise AdapterError(
                 f"envelope workspace {envelope.workspace_id!r} does not match adapter workspace {self.workspace_id!r}"
             )
+        self._upsert_active_envelope(envelope)
+
+    def get_source_manifest(self, source_id: str) -> SourceManifest | None:
+        if self.graph_name not in self._run(self.driver.list_graphs):
+            return None
+        rows = self.read_query(
+            "MATCH (m:SourceManifest {workspace_id: $workspace_id, source_id: $source_id}) "
+            "RETURN m.active_version, m.content_hash, m.extractor_version",
+            {"source_id": source_id},
+        )
+        if not rows:
+            return None
+        return SourceManifest(source_id, str(rows[0][0]), str(rows[0][1]), str(rows[0][2]))
+
+    def begin_source_stage(
+        self, source_id: str, version: str, content_hash: str, extractor_version: str
+    ) -> None:
+        self.ensure_graph()
+        self._write(
+            "MERGE (m:SourceManifest {workspace_id: $workspace_id, source_id: $source_id}) "
+            "SET m.staging_version = $version, m.staging_content_hash = $content_hash, "
+            "m.staging_extractor_version = $extractor_version, m.stage_status = 'writing'",
+            {
+                "workspace_id": self.workspace_id,
+                "source_id": source_id,
+                "version": version,
+                "content_hash": content_hash,
+                "extractor_version": extractor_version,
+            },
+        )
+
+    def stage_envelope(self, envelope: GraphEnvelope, version: str) -> None:
+        if envelope.workspace_id != self.workspace_id:
+            raise AdapterError(
+                f"envelope workspace {envelope.workspace_id!r} does not match adapter workspace {self.workspace_id!r}"
+            )
+        self.ensure_graph()
+        common = {"workspace_id": self.workspace_id, "version": version}
+        if envelope.nodes:
+            self._write(
+                "UNWIND $rows AS row "
+                "MERGE (n:KnowledgeNode {id: row.id, workspace_id: $workspace_id, "
+                "ingestion_version: $version}) "
+                "SET n.source_id = row.source_id, n.source_identity = row.source_identity, "
+                "n.node_type = row.node_type, n.label = row.label, n.text = row.text, "
+                "n.source_location = row.source_location, n.provenance = row.provenance, "
+                "n.properties_json = row.properties_json, n.active = false",
+                {
+                    **common,
+                    "rows": [
+                        {
+                            **node.to_json_dict(),
+                            "properties_json": json.dumps(
+                                node.properties, sort_keys=True, ensure_ascii=False
+                            ),
+                        }
+                        for node in envelope.nodes
+                    ],
+                },
+            )
+        if envelope.relationships:
+            self._write(
+                "UNWIND $rows AS row "
+                "MATCH (a:KnowledgeNode {id: row.source, workspace_id: $workspace_id, "
+                "ingestion_version: $version}) "
+                "MATCH (b:KnowledgeNode {id: row.target, workspace_id: $workspace_id, "
+                "ingestion_version: $version}) "
+                "MERGE (a)-[r:RELATED {id: row.id, workspace_id: $workspace_id, "
+                "ingestion_version: $version}]->(b) "
+                "SET r.source_id = row.source_id, r.relationship_type = row.relationship_type, "
+                "r.provenance = row.provenance, r.source_location = row.source_location, "
+                "r.properties_json = row.properties_json, r.active = false",
+                {
+                    **common,
+                    "rows": [
+                        {
+                            **edge.to_json_dict(),
+                            "properties_json": json.dumps(
+                                edge.properties, sort_keys=True, ensure_ascii=False
+                            ),
+                        }
+                        for edge in envelope.relationships
+                    ],
+                },
+            )
+        if envelope.chunks:
+            self._write(
+                "UNWIND $rows AS row "
+                "MERGE (c:TextChunk {id: row.id, workspace_id: $workspace_id, "
+                "ingestion_version: $version}) "
+                "SET c.source_id = row.source_id, c.text = row.text, "
+                "c.source_location = row.source_location, c.provenance = row.provenance, "
+                "c.node_ids = row.node_ids, c.active = false",
+                {**common, "rows": [chunk.to_json_dict() for chunk in envelope.chunks]},
+            )
+        if envelope.citations:
+            self._write(
+                "UNWIND $rows AS row "
+                "MERGE (c:Citation {id: row.id, workspace_id: $workspace_id, "
+                "ingestion_version: $version}) "
+                "SET c.source_id = row.source_id, c.chunk_id = row.chunk_id, c.title = row.title, "
+                "c.source_location = row.source_location, c.source_uri = row.source_uri, "
+                "c.active = false",
+                {**common, "rows": [citation.to_json_dict() for citation in envelope.citations]},
+            )
+
+    def verify_source_stage(self, source_id: str, version: str) -> StageCounts:
+        params = {"source_id": source_id, "version": version}
+
+        def count(pattern: str) -> int:
+            rows = self.read_query(f"MATCH {pattern} RETURN count(record)", params)
+            return int(rows[0][0])
+
+        return StageCounts(
+            nodes=count(
+                "(record:KnowledgeNode {workspace_id: $workspace_id, source_id: $source_id, "
+                "ingestion_version: $version})"
+            ),
+            relationships=count(
+                "()-[record:RELATED {workspace_id: $workspace_id, source_id: $source_id, "
+                "ingestion_version: $version}]->()"
+            ),
+            chunks=count(
+                "(record:TextChunk {workspace_id: $workspace_id, source_id: $source_id, "
+                "ingestion_version: $version})"
+            ),
+            citations=count(
+                "(record:Citation {workspace_id: $workspace_id, source_id: $source_id, "
+                "ingestion_version: $version})"
+            ),
+        )
+
+    def publish_source_stage(
+        self, source_id: str, version: str, content_hash: str, extractor_version: str
+    ) -> None:
+        self._write(
+            "MATCH (m:SourceManifest {workspace_id: $workspace_id, source_id: $source_id}) "
+            "WHERE m.staging_version = $version "
+            "OPTIONAL MATCH (newNode {workspace_id: $workspace_id, source_id: $source_id, "
+            "ingestion_version: $version}) "
+            "WHERE newNode:KnowledgeNode OR newNode:TextChunk OR newNode:Citation "
+            "WITH m, collect(newNode) AS newNodes "
+            "OPTIONAL MATCH ()-[newRel:RELATED {workspace_id: $workspace_id, "
+            "source_id: $source_id, ingestion_version: $version}]-() "
+            "WITH m, newNodes, collect(newRel) AS newRels "
+            "FOREACH (n IN newNodes | SET n.active = true) "
+            "FOREACH (r IN newRels | SET r.active = true) "
+            "SET m.active_version = $version, m.content_hash = $content_hash, "
+            "m.extractor_version = $extractor_version, m.stage_status = 'published', "
+            "m.staging_version = null, m.staging_content_hash = null, "
+            "m.staging_extractor_version = null "
+            "WITH m "
+            "OPTIONAL MATCH ()-[oldRel:RELATED {workspace_id: $workspace_id, "
+            "source_id: $source_id}]-() "
+            "WHERE coalesce(oldRel.ingestion_version, '') <> $version "
+            "WITH m, [r IN collect(oldRel) WHERE r IS NOT NULL] AS oldRels "
+            "FOREACH (r IN oldRels | DELETE r) "
+            "WITH m "
+            "OPTIONAL MATCH (oldNode {workspace_id: $workspace_id, source_id: $source_id}) "
+            "WHERE (oldNode:KnowledgeNode OR oldNode:TextChunk OR oldNode:Citation) "
+            "AND coalesce(oldNode.ingestion_version, '') <> $version "
+            "WITH m, [n IN collect(oldNode) WHERE n IS NOT NULL] AS oldNodes "
+            "FOREACH (n IN oldNodes | DETACH DELETE n) "
+            "RETURN m.active_version",
+            {
+                "workspace_id": self.workspace_id,
+                "source_id": source_id,
+                "version": version,
+                "content_hash": content_hash,
+                "extractor_version": extractor_version,
+            },
+        )
+
+    def recover_source(self, source_id: str, active_version: str) -> None:
+        params = {
+            "workspace_id": self.workspace_id,
+            "source_id": source_id,
+            "active_version": active_version,
+        }
+        self._write(
+            "MATCH ()-[r:RELATED {workspace_id: $workspace_id, source_id: $source_id}]-() "
+            "WHERE coalesce(r.active, false) = false "
+            "AND coalesce(r.ingestion_version, '') <> $active_version DELETE r",
+            params,
+        )
+        self._write(
+            "MATCH (n {workspace_id: $workspace_id, source_id: $source_id}) "
+            "WHERE (n:KnowledgeNode OR n:TextChunk OR n:Citation) "
+            "AND coalesce(n.active, false) = false "
+            "AND coalesce(n.ingestion_version, '') <> $active_version DETACH DELETE n",
+            params,
+        )
+        self._write(
+            "MATCH (m:SourceManifest {workspace_id: $workspace_id, source_id: $source_id}) "
+            "SET m.staging_version = null, m.staging_content_hash = null, "
+            "m.staging_extractor_version = null, m.stage_status = 'recovered'",
+            params,
+        )
+
+    def rollback_source_stage(self, source_id: str, version: str) -> None:
+        params = {
+            "workspace_id": self.workspace_id,
+            "source_id": source_id,
+            "version": version,
+        }
+        self._write(
+            "MATCH ()-[r:RELATED {workspace_id: $workspace_id, source_id: $source_id, "
+            "ingestion_version: $version}]-() WHERE coalesce(r.active, false) = false DELETE r",
+            params,
+        )
+        self._write(
+            "MATCH (n {workspace_id: $workspace_id, source_id: $source_id, "
+            "ingestion_version: $version}) "
+            "WHERE (n:KnowledgeNode OR n:TextChunk OR n:Citation) "
+            "AND coalesce(n.active, false) = false DETACH DELETE n",
+            params,
+        )
+        self._write(
+            "MATCH (m:SourceManifest {workspace_id: $workspace_id, source_id: $source_id}) "
+            "WHERE m.staging_version = $version "
+            "SET m.staging_version = null, m.staging_content_hash = null, "
+            "m.staging_extractor_version = null, m.stage_status = 'rolled_back'",
+            params,
+        )
+
+    def _upsert_active_envelope(self, envelope: GraphEnvelope) -> None:
         self.ensure_graph()
         if envelope.nodes:
             self._write(

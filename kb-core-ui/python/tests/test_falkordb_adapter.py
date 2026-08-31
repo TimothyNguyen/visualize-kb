@@ -23,6 +23,7 @@ class FakeGraph:
     def __init__(self):
         self.writes: list[tuple[str, dict, int]] = []
         self.reads: list[tuple[str, dict, int]] = []
+        self.read_results: list[list] = []
         self.deleted = False
 
     def query(self, query, params=None, timeout=None):
@@ -31,7 +32,7 @@ class FakeGraph:
 
     def ro_query(self, query, params=None, timeout=None):
         self.reads.append((query, dict(params or {}), timeout))
-        return FakeResult([["ok"]])
+        return FakeResult(self.read_results.pop(0) if self.read_results else [["ok"]])
 
     def delete(self):
         self.deleted = True
@@ -205,3 +206,73 @@ def test_delete_source_and_graph_stay_bound_to_selected_workspace() -> None:
 def test_adapter_requires_ready_config_without_importing_optional_driver() -> None:
     with pytest.raises(AdapterError, match="RAG_ENABLE=true"):
         FalkorDBAdapter(RagConfig.from_env({}), "alpha")
+
+
+def test_stage_envelope_writes_inactive_versioned_records() -> None:
+    driver = FakeDriver()
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    adapter.stage_envelope(envelope(), "version-next")
+
+    assert len(driver.graph.writes) == 5
+    record_writes = driver.graph.writes[1:]
+    assert all(params["version"] == "version-next" for _, params, _ in record_writes)
+    assert all("active = false" in query for query, _, _ in record_writes)
+    assert all("ingestion_version" in query for query, _, _ in record_writes)
+
+
+def test_manifest_and_stage_counts_are_source_scoped() -> None:
+    driver = FakeDriver(graph_exists=True)
+    driver.graph.read_results = [
+        [["version-old", "hash-old", "extractor-old"]],
+        [[2]],
+        [[1]],
+        [[2]],
+        [[2]],
+    ]
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    manifest = adapter.get_source_manifest("repo")
+    counts = adapter.verify_source_stage("repo", "version-next")
+
+    assert manifest.active_version == "version-old"
+    assert manifest.content_hash == "hash-old"
+    assert counts.nodes == 2
+    assert counts.relationships == 1
+    assert counts.chunks == 2
+    assert counts.citations == 2
+    assert all(read[1]["source_id"] == "repo" for read in driver.graph.reads)
+    relationship_count_query = driver.graph.reads[2][0]
+    assert "]->()" in relationship_count_query
+
+
+def test_manifest_is_absent_before_workspace_graph_exists() -> None:
+    driver = FakeDriver(graph_exists=False)
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    assert adapter.get_source_manifest("repo") is None
+    assert driver.graph.reads == []
+
+
+def test_publish_is_one_atomic_swap_and_recovery_is_source_owned() -> None:
+    driver = FakeDriver()
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    adapter.publish_source_stage("repo", "version-next", "hash-next", "extractor-next")
+    adapter.recover_source("repo", "version-old")
+    adapter.rollback_source_stage("repo", "version-next")
+
+    publish_query, publish_params, _ = driver.graph.writes[0]
+    assert "active_version" in publish_query
+    assert "DETACH DELETE" in publish_query
+    assert publish_params == {
+        "workspace_id": "alpha",
+        "source_id": "repo",
+        "version": "version-next",
+        "content_hash": "hash-next",
+        "extractor_version": "extractor-next",
+    }
+    assert all(
+        params["workspace_id"] == "alpha" and params["source_id"] == "repo"
+        for _, params, _ in driver.graph.writes
+    )
