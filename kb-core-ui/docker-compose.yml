@@ -1,0 +1,71 @@
+name: kb-core-ui-graphrag
+
+x-rag-env: &rag-env
+  RAG_ENABLE: "true"
+  # Service name, not localhost: only the backend containers reach FalkorDB.
+  FALKORDB_URL: "falkor://falkordb:6379"
+  FALKORDB_USERNAME: "${FALKORDB_USERNAME:-}"
+  FALKORDB_PASSWORD: "${FALKORDB_PASSWORD:-}"
+  FALKORDB_SSL: "${FALKORDB_SSL:-false}"
+  # Mocked by default: deterministic answers, no provider account, no keys.
+  RAG_LLM_PROVIDER: "${RAG_LLM_PROVIDER:-fake}"
+  RAG_LLM_MODEL: "${RAG_LLM_MODEL:-fake}"
+  RAG_EMBEDDING_MODEL: "${RAG_EMBEDDING_MODEL:-fake}"
+  RAG_MAX_CONTEXT: "${RAG_MAX_CONTEXT:-8000}"
+  COPILOTKIT_TELEMETRY_DISABLED: "true"
+
+services:
+  falkordb:
+    # Pinned to the same tag the RAG harness CI job runs against.
+    image: falkordb/falkordb:v4.20.4
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - falkordb-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment: *rag-env
+    volumes:
+      - kb-core-ui-data:/app/data
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    restart: "no"
+    command:
+      - kb-core-ui
+      - workspace
+      - seed
+      - --repo
+      - /app/data
+      - --fixture
+      - /app/deploy/seed/workspace.json
+
+  kb-core-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment: *rag-env
+    ports:
+      - "127.0.0.1:8420:8420"
+    volumes:
+      - kb-core-ui-data:/app/data
+    depends_on:
+      falkordb:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  falkordb-data:
+  kb-core-ui-data:

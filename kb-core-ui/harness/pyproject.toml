@@ -7,7 +7,9 @@ name = "kb-core-ui-harness"
 version = "0.1.0"
 description = "Go-vs-Python parity harness for kb-core-ui (spec/SPEC.md T3/T4)"
 requires-python = ">=3.10"
-dependencies = []
+# The RAG harness asserts the dev-stack compose file and the CI service pin
+# agree, which means reading both YAML files.
+dependencies = ["PyYAML>=6,<7"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

@@ -108,6 +108,13 @@ environment; that combination conflicts on `tree-sitter` versions.
 React graph data remains sourced from KB Core `graph.json`. API client types
 and REST/MCP contracts remain unchanged.
 
+## GraphRAG dev stack
+
+`docker compose up --build` runs pinned FalkorDB, seeds a demo workspace, and
+serves the UI with mocked models — no provider account and no API key. See
+[deploy/README.md](deploy/README.md) for seeding, reset, and optional provider
+setup.
+
 ## Optional Go oracle
 
 Build from `legacy/go/` with `go build -o kb-core-ui.exe ./cmd/kb-core-ui`

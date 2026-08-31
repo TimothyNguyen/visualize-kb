@@ -16,6 +16,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import yaml
+
 from kb_core_ui.rag import (
     AdapterError,
     ChatHistoryStore,
@@ -47,6 +49,7 @@ from kb_core_ui.rag import (
 )
 from kb_core_ui.indexer import index
 from kb_core_ui.rag.coordinator import IngestionCoordinator
+from kb_core_ui.rag.seed import load_seed_fixture, seed_workspace
 from kb_core_ui.server import Server
 from kb_core_ui.server.httpd import listen_and_serve
 from kb_core_ui.store import Store
@@ -71,6 +74,7 @@ REQUIRED_STAGES = (
     "ingestion_coordinator",
     "ingestion_http_lifecycle",
     "graph_explorer_compatibility",
+    "dev_stack_seed",
     "source_delete_isolation",
     "registry_reopen",
     "graph_cleanup",
@@ -1321,6 +1325,160 @@ def execute_rag_workflow(
             "focused_edges": len(focused["edges"]),
         }
 
+    def dev_stack_seed_stage() -> dict[str, Any]:
+        ui_root = Path(__file__).resolve().parents[2]
+        compose_path = ui_root / "docker-compose.yml"
+        compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+        dockerfile = (ui_root / "Dockerfile").read_text(encoding="utf-8")
+        env_example = (ui_root / ".env.example").read_text(encoding="utf-8")
+        ci = yaml.safe_load(
+            (ui_root.parent / ".github" / "workflows" / "rag-harness.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        services = compose["services"]
+        missing = {"falkordb", "seed", "kb-core-ui"} - set(services)
+        if missing:
+            raise WorkflowFailure(f"compose stack is missing services: {sorted(missing)}")
+
+        # A dev stack that drifts off the tag CI proves against is not a dev
+        # stack, so the two are compared instead of both being trusted.
+        pinned = str(services["falkordb"]["image"])
+        ci_image = str(ci["jobs"]["falkordb-backend"]["services"]["falkordb"]["image"])
+        if pinned != ci_image:
+            raise WorkflowFailure(f"compose pins {pinned!r} but CI runs {ci_image!r}")
+        if ":" not in pinned or pinned.endswith(":latest"):
+            raise WorkflowFailure(f"FalkorDB image is not pinned: {pinned!r}")
+
+        falkor_test = " ".join(str(part) for part in services["falkordb"]["healthcheck"]["test"])
+        if "ping" not in falkor_test:
+            raise WorkflowFailure(f"FalkorDB health check does not ping: {falkor_test!r}")
+        if "HEALTHCHECK" not in dockerfile or "USER kbcore" not in dockerfile:
+            raise WorkflowFailure("app image lost its health check or its non-root user")
+
+        app = services["kb-core-ui"]
+        depends = app.get("depends_on", {})
+        if depends.get("falkordb", {}).get("condition") != "service_healthy":
+            raise WorkflowFailure("app does not wait for a healthy FalkorDB")
+        if depends.get("seed", {}).get("condition") != "service_completed_successfully":
+            raise WorkflowFailure("app does not wait for the fixture seed to finish")
+
+        seed_command = " ".join(str(part) for part in services["seed"]["command"])
+        if "workspace seed" not in seed_command or "--fixture" not in seed_command:
+            raise WorkflowFailure(f"seed service does not drive the CLI leaf: {seed_command!r}")
+        manifest_arg = seed_command.split("--fixture", 1)[1].strip().split()[0]
+        manifest = ui_root / manifest_arg.replace("/app/", "").replace("/", os.sep)
+        if not manifest.is_file():
+            raise WorkflowFailure(f"seed service points at a manifest that is not shipped: {manifest_arg!r}")
+
+        env = {str(key): str(value) for key, value in app["environment"].items()}
+        allowed = {
+            "RAG_ENABLE",
+            "FALKORDB_URL",
+            "FALKORDB_USERNAME",
+            "FALKORDB_PASSWORD",
+            "FALKORDB_SSL",
+            "RAG_LLM_PROVIDER",
+            "RAG_LLM_MODEL",
+            "RAG_EMBEDDING_MODEL",
+            "RAG_MAX_CONTEXT",
+            "COPILOTKIT_TELEMETRY_DISABLED",
+        }
+        unknown = set(env) - allowed
+        if unknown:
+            raise WorkflowFailure(f"compose sets configuration outside the contract: {sorted(unknown)}")
+
+        def compose_default(value: str) -> str:
+            if value.startswith("${") and value.endswith("}") and ":-" in value:
+                return value[2:-1].split(":-", 1)[1]
+            return value
+
+        for key in ("FALKORDB_USERNAME", "FALKORDB_PASSWORD"):
+            if not env[key].startswith("${") or compose_default(env[key]):
+                raise WorkflowFailure(f"{key} carries a baked-in value: {env[key]!r}")
+        mocked = (
+            compose_default(env["RAG_LLM_PROVIDER"]),
+            compose_default(env["RAG_LLM_MODEL"]),
+            compose_default(env["RAG_EMBEDDING_MODEL"]),
+        )
+        if set(mocked) != {"fake"}:
+            raise WorkflowFailure(f"stack does not default to mocked models: {mocked!r}")
+        if env["COPILOTKIT_TELEMETRY_DISABLED"] != "true":
+            raise WorkflowFailure("CopilotKit telemetry is not disabled in the stack")
+
+        settings = [
+            line.strip()
+            for line in env_example.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        keys = {key for service in services.values() for key in service.get("environment", {})}
+        if any(str(key).startswith("VITE_") for key in keys) or any(
+            "VITE_" in line for line in settings
+        ):
+            raise WorkflowFailure("stack configuration leaks into the frontend build environment")
+        assigned = [line for line in settings if line.split("=", 1)[-1].strip()]
+        if assigned:
+            raise WorkflowFailure(f".env.example ships real values: {assigned!r}")
+        for name in ("falkordb", "kb-core-ui"):
+            for port in services[name].get("ports", []):
+                if not str(port).startswith("127.0.0.1:"):
+                    raise WorkflowFailure(f"{name} publishes {port!r} beyond the loopback interface")
+
+        # Contract checked; now drive the shipped manifest through the same
+        # manager the compose seed service calls.
+        seed_registry = WorkspaceRegistry(str(work_dir / "dev-stack-workspaces.json"))
+        config = _config(backend)
+
+        def adapter_factory(selected_workspace_id: str):
+            driver = state.get("driver") if backend == "fake" else None
+            return FalkorDBAdapter(config, selected_workspace_id, driver=driver)
+
+        manager = WorkspaceManager(
+            seed_registry,
+            config,
+            adapter_factory=adapter_factory,
+            ingestion_coordinator=IngestionCoordinator(
+                seed_registry, adapter_factory=adapter_factory, embeddings=_HarnessEmbeddings()
+            ),
+        )
+        fixture = load_seed_fixture(str(manifest))
+
+        def statuses(result: dict[str, Any]) -> list[str]:
+            return [str(source["status"]) for source in result["sources"]]
+
+        first = seed_workspace(manager, fixture)
+        if not first["created"] or set(statuses(first)) != {"succeeded"}:
+            raise WorkflowFailure(f"fixture seed did not ingest: {first!r}")
+        seeded = manager.stats(fixture.workspace_id)
+        if seeded["nodes"] < 1 or sorted(seeded["source_ids"]) != ["docs", "repo"]:
+            raise WorkflowFailure(f"seeded workspace is empty: {seeded!r}")
+
+        again = seed_workspace(manager, fixture)
+        if again["created"] or any(source["added"] for source in again["sources"]):
+            raise WorkflowFailure(f"re-seeding duplicated the workspace: {again!r}")
+        repeated = manager.stats(fixture.workspace_id)
+        if repeated["nodes"] != seeded["nodes"]:
+            raise WorkflowFailure(f"re-seeding changed the graph: {seeded!r} -> {repeated!r}")
+
+        reset = seed_workspace(manager, fixture, reset=True)
+        if not reset["reset"] or not reset["created"]:
+            raise WorkflowFailure(f"reset did not rebuild the workspace: {reset!r}")
+        rebuilt = manager.stats(fixture.workspace_id)
+        if rebuilt["nodes"] != seeded["nodes"]:
+            raise WorkflowFailure(f"reset lost records: {seeded!r} -> {rebuilt!r}")
+        manager.delete_workspace(fixture.workspace_id)
+
+        return {
+            "falkordb_image": pinned,
+            "matches_ci_image": True,
+            "workspace_id": fixture.workspace_id,
+            "seeded_sources": [source["id"] for source in first["sources"]],
+            "seeded_nodes": seeded["nodes"],
+            "idempotent": True,
+            "reset_nodes": rebuilt["nodes"],
+        }
+
     def reopen_stage() -> dict[str, Any]:
         reopened = WorkspaceRegistry(str(work_dir / "workspaces.json")).get(state["workspace"].id)
         statuses = {source_id: source.status for source_id, source in reopened.sources.items()}
@@ -1354,6 +1512,7 @@ def execute_rag_workflow(
         ("ingestion_coordinator", coordinator_stage),
         ("ingestion_http_lifecycle", ingestion_http_lifecycle_stage),
         ("graph_explorer_compatibility", graph_explorer_compatibility_stage),
+        ("dev_stack_seed", dev_stack_seed_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),
         ("graph_cleanup", cleanup_stage),

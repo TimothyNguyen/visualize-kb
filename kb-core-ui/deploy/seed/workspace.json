@@ -1,0 +1,16 @@
+{
+  "workspace_id": "demo",
+  "workspace_name": "Demo Workspace",
+  "sources": [
+    {
+      "id": "repo",
+      "kind": "local_repo",
+      "uri": "repo"
+    },
+    {
+      "id": "docs",
+      "kind": "document_set",
+      "uri": "docs"
+    }
+  ]
+}

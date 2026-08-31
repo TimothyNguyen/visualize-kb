@@ -1,0 +1,71 @@
+{
+  "nodes": [
+    {
+      "id": "src/server/app.py:Server",
+      "label": "Server",
+      "file_type": "code",
+      "source_location": "src/server/app.py:L1",
+      "doc": "HTTP surface. Routes graph, memory, and workspace-scoped GraphRAG requests to the managers.",
+      "_origin": "ast"
+    },
+    {
+      "id": "src/rag/manager.py:WorkspaceManager",
+      "label": "WorkspaceManager",
+      "file_type": "code",
+      "source_location": "src/rag/manager.py:L1",
+      "doc": "Owns workspace lifecycle: create, delete, sources, ingestion runs, health, stats, and bounded graph context.",
+      "_origin": "ast"
+    },
+    {
+      "id": "src/rag/coordinator.py:IngestionCoordinator",
+      "label": "IngestionCoordinator",
+      "file_type": "code",
+      "source_location": "src/rag/coordinator.py:L1",
+      "doc": "Normalizes a source, reconciles it into FalkorDB, and records run results.",
+      "_origin": "ast"
+    },
+    {
+      "id": "src/rag/falkordb_adapter.py:FalkorDBAdapter",
+      "label": "FalkorDBAdapter",
+      "file_type": "code",
+      "source_location": "src/rag/falkordb_adapter.py:L1",
+      "doc": "Parameterized FalkorDB access for one workspace graph. Read queries are read-only.",
+      "_origin": "ast"
+    },
+    {
+      "id": "src/rag/chat_manager.py:ChatManager",
+      "label": "ChatManager",
+      "file_type": "code",
+      "source_location": "src/rag/chat_manager.py:L1",
+      "doc": "Runs the LangGraph chat workflow for a workspace thread and persists history.",
+      "_origin": "ast"
+    }
+  ],
+  "links": [
+    {
+      "source": "src/server/app.py:Server",
+      "target": "src/rag/manager.py:WorkspaceManager",
+      "relation": "calls"
+    },
+    {
+      "source": "src/server/app.py:Server",
+      "target": "src/rag/chat_manager.py:ChatManager",
+      "relation": "calls"
+    },
+    {
+      "source": "src/rag/manager.py:WorkspaceManager",
+      "target": "src/rag/coordinator.py:IngestionCoordinator",
+      "relation": "calls"
+    },
+    {
+      "source": "src/rag/coordinator.py:IngestionCoordinator",
+      "target": "src/rag/falkordb_adapter.py:FalkorDBAdapter",
+      "relation": "calls"
+    },
+    {
+      "source": "src/rag/chat_manager.py:ChatManager",
+      "target": "src/rag/falkordb_adapter.py:FalkorDBAdapter",
+      "relation": "calls"
+    }
+  ]
+}

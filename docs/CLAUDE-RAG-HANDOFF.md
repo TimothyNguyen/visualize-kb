@@ -210,6 +210,46 @@ Verification: Python 218 passed; harness 128 passed; fake RAG workflow 19/19;
 pinned `falkordb/falkordb:v4.20.4` workflow 19/19; web 57 passed; lint exited 0;
 `tsc -b`, `pnpm build`, and `pnpm build:runtime` passed.
 
+## T17 result (Docker Compose dev stack) — done
+
+`kb-core-ui/docker-compose.yml` runs three services: pinned
+`falkordb/falkordb:v4.20.4` (health check `redis-cli ping`, named volume), a
+one-shot `seed` service, and the `kb-core-ui` app built from the new
+`kb-core-ui/Dockerfile`. The app waits for FalkorDB `service_healthy` and for
+`seed` `service_completed_successfully`, so `docker compose up` reaches a
+working chat with no manual step. Both published ports bind `127.0.0.1`. The
+image is Python-only and copies the host-built `web/dist`, so no FalkorDB or
+provider value can reach a Vite build; it runs as non-root `kbcore` and health
+checks itself with `GET /api/stats`. Compose defaults to mocked models
+(`RAG_LLM_PROVIDER`/`RAG_LLM_MODEL`/`RAG_EMBEDDING_MODEL` = `fake`), which the
+existing `ChatManager` gate already understands — no new mock code. Credentials
+are `${VAR:-}` references only; `.env.example` ships keys with no values.
+
+Seeding goes through one boundary: `kb_core_ui/rag/seed.py`
+(`load_seed_fixture` + `seed_workspace`) drives `WorkspaceManager` and
+`IngestionCoordinator`, exposed as `kb-core-ui workspace seed --fixture <path>
+[--reset]` under the existing hidden `workspace` group. Relative manifest URIs
+resolve against the manifest file, so the same `deploy/seed/workspace.json`
+works from the container, the host, and the harness. Re-seeding refreshes
+existing sources instead of failing, so `docker compose up` is repeatable.
+
+Required harness stage `dev_stack_seed` (stage count now 20) parses the compose
+file and `.github/workflows/rag-harness.yml` and fails if the pinned FalkorDB
+tag drifts from the tag CI proves against, if a health check or the
+`depends_on` conditions disappear, if the app image loses `HEALTHCHECK` or its
+non-root user, if compose sets configuration outside the I.config list, if a
+credential gains a baked-in default, if the mocked defaults change, if a
+`VITE_*` key appears, if `.env.example` gains a real value, or if a port leaves
+loopback. It then drives the shipped manifest through a real manager: seed,
+assert `succeeded` runs and non-empty stats, re-seed and assert the node count
+is unchanged and nothing was re-added, `--reset` and assert the graph rebuilds
+to the same size, then delete. `PyYAML` is now a harness dependency.
+
+Verification: Python 225 passed; harness 128 passed; fake RAG workflow 20/20;
+pinned `falkordb/falkordb:v4.20.4` workflow 20/20; `docker compose config`
+clean; web 57 passed; lint exited 0; `tsc -b`, `pnpm build`, and
+`pnpm build:runtime` passed.
+
 ## Non-Negotiable Workflow
 
 For every remaining task:

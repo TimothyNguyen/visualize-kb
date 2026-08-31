@@ -38,6 +38,7 @@ from kb_core_ui.memory import now as memory_now
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.falkordb_adapter import AdapterError
 from kb_core_ui.rag.manager import WorkspaceManager
+from kb_core_ui.rag.seed import load_seed_fixture, seed_workspace
 from kb_core_ui.rag.workspaces import WorkspaceError, WorkspaceRegistry
 from kb_core_ui.server import Server, listen_and_serve
 from kb_core_ui.store import Store
@@ -742,6 +743,17 @@ def _new_workspace_cmd() -> Command:
             "Get workspace graph statistics",
             lambda manager, _v, args: manager.stats(args[0]),
             args=exact_args(1),
+        ),
+        _workspace_leaf(
+            "seed",
+            "Seed a fixture workspace from a seed manifest",
+            lambda manager, values, _a: seed_workspace(
+                manager, load_seed_fixture(values["fixture"]), reset=values["reset"]
+            ),
+            flags=(
+                Flag("fixture", "string", "", "seed manifest path"),
+                Flag("reset", "bool", False, "delete the workspace before seeding"),
+            ),
         ),
         _workspace_leaf(
             "context <workspace>",
