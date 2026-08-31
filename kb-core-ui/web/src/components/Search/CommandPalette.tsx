@@ -6,6 +6,11 @@ import { KindBadge } from "../Badges/Badges"
 import "./CommandPalette.css"
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) return null
+  return <OpenCommandPalette onClose={onClose} />
+}
+
+function OpenCommandPalette({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SymbolRef[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
@@ -17,21 +22,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   // after the palette opens (a fast typist, or a script) land on whatever
   // element had focus before — not the palette's own input.
   useLayoutEffect(() => {
-    if (open) {
-      inputRef.current?.focus()
-    }
-  }, [open])
+    inputRef.current?.focus()
+  }, [])
 
   useEffect(() => {
-    if (open) {
-      setQuery("")
-      setResults([])
-      setActiveIndex(0)
-    }
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
     let cancelled = false
     search(query)
       .then((r) => {
@@ -46,7 +40,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     return () => {
       cancelled = true
     }
-  }, [query, open])
+  }, [query])
 
   function select(symbol: SymbolRef) {
     navigate(`/symbol/${encodeURIComponent(symbol.id)}`)
@@ -68,8 +62,6 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       if (chosen) select(chosen)
     }
   }
-
-  if (!open) return null
 
   return (
     <div className="palette-overlay" onClick={onClose}>

@@ -10,6 +10,10 @@ import "./SymbolDetailView.css"
 
 export function SymbolDetailView() {
   const { id = "" } = useParams()
+  return <SymbolDetailContent key={id} id={id} />
+}
+
+function SymbolDetailContent({ id }: { id: string }) {
   const navigate = useNavigate()
 
   const [symbol, setSymbol] = useState<GraphSymbol | null>(null)
@@ -21,13 +25,6 @@ export function SymbolDetailView() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    setSymbol(null)
-    setMembers([])
-    setCalls([])
-    setCallers([])
-
     Promise.all([getSymbol(id), getSymbolMembers(id), getSymbolCalls(id), getSymbolCallers(id)])
       .then(([sym, mem, callsRes, callersRes]) => {
         if (cancelled) return

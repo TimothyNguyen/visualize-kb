@@ -34,7 +34,6 @@ export function MemoryView() {
     const q = query.trim()
 
     if (q.length === 0) {
-      setLoading(true)
       getMemory(kind)
         .then((list) => {
           if (cancelled) return
@@ -52,7 +51,6 @@ export function MemoryView() {
       }
     }
 
-    setLoading(true)
     const timer = window.setTimeout(() => {
       searchMemory(q, kind)
         .then((results) => {
@@ -75,6 +73,7 @@ export function MemoryView() {
   }, [query, kindFilter, refreshKey])
 
   function refresh() {
+    setLoading(true)
     setRefreshKey((k) => k + 1)
   }
 
@@ -103,12 +102,18 @@ export function MemoryView() {
           type="search"
           value={query}
           placeholder="Search memory…"
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setLoading(true)
+            setQuery(e.target.value)
+          }}
         />
         <select
           className="memory-kind-select"
           value={kindFilter}
-          onChange={(e) => setKindFilter(e.target.value as KindFilter)}
+          onChange={(e) => {
+            setLoading(true)
+            setKindFilter(e.target.value as KindFilter)
+          }}
         >
           <option value="any">any kind</option>
           {KINDS.map((k) => (

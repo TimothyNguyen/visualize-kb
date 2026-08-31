@@ -112,6 +112,34 @@ fake RAG workflow 15/15 passed; web 20 passed; lint exited 0; production build
 passed. FalkorDB behavior did not change, so pinned-service rerun was not
 required for T11.
 
+## T12 result (CopilotKit chat UI) — done
+
+`/chat` renders a CopilotKit workbench with workspace selector, retrieval-scope
+checkboxes, and `auto`/`local`/`multi_path` strategy, all pushed into AG-UI
+agent state so the server keeps enforcing the scope. A self-hosted Node runtime
+(`kb-core-ui/web/runtime/server.ts`) sets `COPILOTKIT_TELEMETRY_DISABLED` before
+importing the runtime and forwards to `POST /api/rag/agent`; no hosted control
+plane and no credentials in Vite env. `kb_core_ui/rag/agui.py` bridges that
+endpoint onto the frozen T11 contract, so heartbeats stay comments and each run
+ends in exactly one `RUN_FINISHED` or `RUN_ERROR`.
+
+Required harness stage `agui_runtime` drives `POST /api/rag/agent` over real
+loopback HTTP: AG-UI framing, workspace scope surviving the state snapshot,
+citations confined to workspace sources, mid-stream abort ending in `RUN_ERROR`,
+and 400/404/400 rejections for unscoped, unknown-workspace, and empty-message
+runs. Both HTTP stages now share the `_serving` helper. Required stage count is
+now 17.
+
+Verification: Python 216 passed; harness 128 passed; fake RAG workflow 17/17;
+pinned `falkordb/falkordb:v4.20.4` workflow 17/17 (rerun because the new stage
+reads through the adapter); web 32 passed; lint exited 0; `pnpm build` and
+`pnpm build:runtime` passed. Fixed while testing: the workspace list never
+seeded `allowedSourceIds`, so scope checkboxes rendered unchecked on first load.
+
+Left behind on purpose: `kb-core-ui/web/vendor/falkordb-ui-chat-0.1.0.tgz` is
+now unreferenced (T12 moved from `@falkordb/ui-chat` to CopilotKit) and can be
+deleted once nobody wants the build artifact back.
+
 ## Non-Negotiable Workflow
 
 For every remaining task:
@@ -306,11 +334,15 @@ Harness must exercise real HTTP transport, not only call workflow methods.
 
 ### T12: Chat UI
 
-Integrate `@falkordb/ui-chat` as presentation only.
+Integrate CopilotKit as presentation and runtime only, self-hosted.
 
 Deliver:
 
-- Add compatible package version and custom-element typings.
+- Pinned `@copilotkit/react-core` and `@copilotkit/runtime`, plus a Node runtime
+  process this repository owns. Telemetry disabled; hosted CopilotKit control
+  plane out of scope.
+- AG-UI bridge over the frozen T11 chat contract, so the runtime forwards turns
+  to one backend endpoint instead of reaching retrieval or providers itself.
 - `/chat` route and navigation entry without disturbing existing routes.
 - Workspace selector and strategies: `auto`, `local`, `multi_path`.
 - SSE accumulation, abort, retry, suggestions, feedback, citations, sources,

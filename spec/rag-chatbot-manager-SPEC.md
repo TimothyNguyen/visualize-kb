@@ -109,7 +109,7 @@ V16. No task becomes `x` from isolated unit tests alone. Each task adds/updates 
 |T9|x|Build LangGraph RAG workflow: scope validation -> hybrid retrieval -> entity expansion -> safe read-only graph query -> evidence ranking -> answer/citations; add retry and empty-result branches.|C7,C8,C9,V7,V8,V16,I.falkor_blog,I.harness|
 |T10|x|Persist thread history/checkpoints with workspace-scoped FalkorDB saver or chat history adapter; define retention and cleanup; never persist provider secrets.|C3,C9,C11,V11,V16,I.falkor_blog,I.harness|
 |T11|x|Define REST + SSE contract for chat, suggestions, feedback, context, source map, graph explanation, errors, cancellation, and degraded mode. Add contract fixtures.|C9,C11,V9,V10,V16,I.server,I.client,I.copilotkit,I.harness|
-|T12|~|Integrate CopilotKit with self-hosted runtime: `/chat` route, workspace selector, strategy options (`auto`, `local`, `multi_path`), suggestions, AG-UI/SSE accumulation, abort handling, feedback, sources, and entity/source click navigation. Disable telemetry; never use hosted CopilotKit control plane.|C10,C11,V9,V10,V12,V16,I.client,I.routes,I.copilotkit,I.harness|
+|T12|x|Integrate CopilotKit with self-hosted runtime: `/chat` route, workspace selector, strategy options (`auto`, `local`, `multi_path`), suggestions, AG-UI/SSE accumulation, abort handling, feedback, sources, and entity/source click navigation. Disable telemetry; never use hosted CopilotKit control plane.|C10,C11,V9,V10,V12,V16,I.client,I.routes,I.copilotkit,I.harness|
 |T13|.|Add minimal internal ingestion UI and execution coordinator: local repo/document source form, progress/state, rejection report, refresh/delete controls, and workspace graph stats.|C1,C5,V4,V5,V16,I.routes,I.client,I.harness|
 |T14|.|Keep existing graph explorer compatible: selected workspace can open graph overview/subgraph, citation can focus symbol/file, static `graph.json` path still works with `RAG_ENABLE=false`.|C10,V12,V13,V16,I.graph_json,I.routes,I.harness|
 |T15|.|POST-HACKATHON: add shared-deployment auth/tenant policy, strict CORS/origin policy, rate limits, audit events, and formal provider-secret controls.|C3,C6,C8,V6,V15,V16,I.server,I.harness|
@@ -123,5 +123,6 @@ V16. No task becomes `x` from isolated unit tests alone. Each task adds/updates 
 
 |id|date|cause|fix|
 |---|---|---|---|
+|B1|2026-08-31|Windows held a native Vite dependency open during frozen pnpm reinstall|Stop only repo-owned Node processes and retry; no product invariant added because this is an external file-lock condition.|
 
 Recommended hackathon order: finish T12 -> T13 -> T14 -> MVP slice of T16 -> T17. Defer T15, T18, and T19 until internal demo proves product value.

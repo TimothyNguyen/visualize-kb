@@ -4,13 +4,15 @@ import { getSource } from "../../api/client"
 import "./CodePanel.css"
 
 export function CodePanel({ filePath, start, end }: { filePath: string; start: number; end: number }) {
+  return <CodePanelContent key={`${filePath}:${start}:${end}`} filePath={filePath} start={start} end={end} />
+}
+
+function CodePanelContent({ filePath, start, end }: { filePath: string; start: number; end: number }) {
   const [source, setSource] = useState<SourceResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    setSource(null)
-    setError(null)
     getSource(filePath, start, end)
       .then((s) => {
         if (!cancelled) setSource(s)

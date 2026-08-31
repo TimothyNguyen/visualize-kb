@@ -92,6 +92,17 @@ def _manager(tmp_path, *, backend=None, **kwargs) -> ChatManager:
     return manager
 
 
+def test_default_manager_rejects_unimplemented_provider_instead_of_using_fake(tmp_path):
+    config = _config(
+        RAG_LLM_PROVIDER="openai",
+        RAG_LLM_MODEL="gpt-test",
+        RAG_EMBEDDING_MODEL="harness-fake",
+    )
+
+    with pytest.raises(ValueError, match="unsupported RAG_LLM_PROVIDER 'openai'"):
+        ChatManager(_registry(tmp_path), config)
+
+
 # --------------------------------------------------------------------------- #
 # ask() -- complete (non-streaming) chat
 # --------------------------------------------------------------------------- #

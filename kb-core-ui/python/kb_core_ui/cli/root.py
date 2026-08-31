@@ -35,14 +35,10 @@ from kb_core_ui.mcp import Server as McpServer
 from kb_core_ui.mcp import serve_stdio
 from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
-from kb_core_ui.rag import (
-    AdapterError,
-    ChatManager,
-    RagConfig,
-    WorkspaceError,
-    WorkspaceManager,
-    WorkspaceRegistry,
-)
+from kb_core_ui.rag.config import RagConfig
+from kb_core_ui.rag.falkordb_adapter import AdapterError
+from kb_core_ui.rag.manager import WorkspaceManager
+from kb_core_ui.rag.workspaces import WorkspaceError, WorkspaceRegistry
 from kb_core_ui.server import Server, listen_and_serve
 from kb_core_ui.store import Store
 
@@ -459,7 +455,17 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
             memory = None
 
         workspace_manager = _default_workspace_manager(repo_root)
-        chat_manager = ChatManager(workspace_manager.registry, workspace_manager.config)
+        chat_manager = None
+        if workspace_manager.config.enabled:
+            try:
+                from kb_core_ui.rag.chat_manager import ChatManager
+            except ModuleNotFoundError as exc:
+                if exc.name in {"langgraph", "falkordb", "langchain_falkordb"}:
+                    raise KbError(
+                        "GraphRAG dependencies are missing; install kb-core-ui[rag]"
+                    ) from exc
+                raise
+            chat_manager = ChatManager(workspace_manager.registry, workspace_manager.config)
         srv = Server(store, repo_root, web_dir, runner, memory, workspace_manager, chat_manager)
         display_host = "localhost" if values["host"] in ("127.0.0.1", "localhost") else values["host"]
         url = f"http://{display_host}:{values['port']}"
@@ -674,9 +680,14 @@ def _run_help(cmd: Command, values: dict, args: list[str]) -> None:
 
 
 def _default_workspace_manager(repo_root: str) -> WorkspaceManager:
-    return WorkspaceManager(
-        WorkspaceRegistry(workspace_registry_path(repo_root)), RagConfig.from_env(os.environ)
-    )
+    registry = WorkspaceRegistry(workspace_registry_path(repo_root))
+    config = RagConfig.from_env(os.environ)
+    coordinator = None
+    if config.enabled:
+        from kb_core_ui.rag.coordinator import IngestionCoordinator
+
+        coordinator = IngestionCoordinator.for_config(registry, config)
+    return WorkspaceManager(registry, config, ingestion_coordinator=coordinator)
 
 
 def _workspace_leaf(use, short, run, *, args=no_args, flags=()):

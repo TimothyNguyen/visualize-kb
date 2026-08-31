@@ -20,6 +20,7 @@ class WorkspaceManager:
         config: RagConfig,
         *,
         adapter_factory: AdapterFactory | None = None,
+        ingestion_coordinator: object | None = None,
         max_context_records: int = 200,
     ) -> None:
         if max_context_records < 1:
@@ -29,6 +30,7 @@ class WorkspaceManager:
         self.adapter_factory = adapter_factory or (
             lambda workspace_id: FalkorDBAdapter(config, workspace_id)
         )
+        self.ingestion_coordinator = ingestion_coordinator
         self.max_context_records = max_context_records
 
     def list_workspaces(self) -> list[dict[str, object]]:
@@ -56,7 +58,10 @@ class WorkspaceManager:
         return {"workspace_id": workspace_id, "source_id": source_id, "deleted": True}
 
     def start_ingestion(self, workspace_id: str, source_id: str) -> dict[str, object]:
-        return self.registry.queue_run(workspace_id, source_id).to_json_dict()
+        run = self.registry.queue_run(workspace_id, source_id)
+        if self.ingestion_coordinator is None:
+            return run.to_json_dict()
+        return self.ingestion_coordinator.execute(workspace_id, source_id, run.id)
 
     def refresh_source(self, workspace_id: str, source_id: str) -> dict[str, object]:
         return self.start_ingestion(workspace_id, source_id)

@@ -2,15 +2,21 @@
   "name": "kb-core-ui",
   "private": true,
   "version": "0.0.0",
+  "packageManager": "pnpm@10.17.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:runtime": "tsc -p tsconfig.runtime.json",
     "lint": "oxlint",
     "preview": "vite preview",
+    "runtime": "tsx runtime/server.ts",
     "test": "vitest run"
   },
   "dependencies": {
+    "@ag-ui/client": "0.0.57",
+    "@copilotkit/react-core": "1.69.3",
+    "@copilotkit/runtime": "1.69.3",
     "@dagrejs/dagre": "^3.0.0",
     "@xyflow/react": "^12.11.2",
     "react": "^19.2.7",
@@ -29,6 +35,7 @@
     "jsdom": "^29.1.1",
     "oxlint": "^1.71.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "4.23.13",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.11"

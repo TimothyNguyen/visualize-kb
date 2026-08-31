@@ -38,6 +38,9 @@ export function Header({ onOpenSearch }: { onOpenSearch: () => void }) {
         <NavLink to="/memory" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
           Memory
         </NavLink>
+        <NavLink to="/chat" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+          Chat
+        </NavLink>
       </nav>
 
       <button type="button" className="search-trigger" onClick={onOpenSearch}>

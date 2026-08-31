@@ -89,6 +89,7 @@ class IngestionRun:
     source_id: str
     status: str = RUN_QUEUED
     error: str = ""
+    result: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=_now)
     started_at: str = ""
     finished_at: str = ""
@@ -349,6 +350,17 @@ class WorkspaceRegistry:
         run = self.get(workspace_id).runs.get(run_id)
         if run is None:
             raise WorkspaceError(f"run {run_id!r} does not exist in workspace {workspace_id!r}")
+        return run
+
+    def record_run_result(
+        self, workspace_id: str, run_id: str, result: Mapping[str, Any]
+    ) -> IngestionRun:
+        run = self.get_run(workspace_id, run_id)
+        if run.status != RUN_SUCCEEDED:
+            raise WorkspaceError("run result can only be recorded after success")
+        run.result = dict(result)
+        self.get(workspace_id).updated_at = _now()
+        self._save()
         return run
 
     def _source(self, workspace_id: str, source_id: str) -> Source:

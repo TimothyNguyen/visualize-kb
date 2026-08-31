@@ -22,6 +22,10 @@ const GROUP_TITLE: Record<SymbolKind, string> = {
 export function ModuleView() {
   const params = useParams()
   const filePath = params["*"] ?? ""
+  return <ModuleContent key={filePath} filePath={filePath} />
+}
+
+function ModuleContent({ filePath }: { filePath: string }) {
   const navigate = useNavigate()
   const [symbols, setSymbols] = useState<SymbolRef[] | null>(null)
   // The list endpoint only returns SymbolRef (no signature). We enrich each
@@ -32,9 +36,6 @@ export function ModuleView() {
 
   useEffect(() => {
     let cancelled = false
-    setSymbols(null)
-    setSignatures({})
-    setError(null)
     getFileSymbols(filePath)
       .then((s) => {
         if (cancelled) return

@@ -10,6 +10,10 @@ export default defineConfig({
     host: process.env.VITE_HOST ?? '127.0.0.1',
     port: Number(process.env.VITE_PORT ?? 5173),
     strictPort: true,
+    proxy: {
+      '/api/copilotkit': process.env.VITE_COPILOTKIT_PROXY ?? 'http://127.0.0.1:3001',
+      '/api/rag': process.env.VITE_KB_CORE_UI_PROXY ?? 'http://127.0.0.1:8080',
+    },
   },
   test: {
     environment: 'jsdom',

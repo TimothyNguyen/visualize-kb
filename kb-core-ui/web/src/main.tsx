@@ -9,6 +9,7 @@ import { SymbolDetailView } from './pages/SymbolDetailView.tsx'
 import { GraphPageView } from './pages/GraphPageView.tsx'
 import { BotsView } from './pages/BotsView.tsx'
 import { MemoryView } from './pages/MemoryView.tsx'
+import { WorkspaceChatRoute } from './routes/WorkspaceChatRoute.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="graph" element={<GraphPageView />} />
           <Route path="bots" element={<BotsView />} />
           <Route path="memory" element={<MemoryView />} />
+          <Route path="chat" element={<WorkspaceChatRoute />} />
         </Route>
       </Routes>
     </BrowserRouter>

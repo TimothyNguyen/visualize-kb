@@ -27,6 +27,16 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 
 from kb_core_ui.memory import HashingEmbedder
+from kb_core_ui.rag.chat_contract import (
+    SSE_EVENT_CANCELLED,
+    SSE_EVENT_COMPLETED,
+    SSE_EVENT_ERROR,
+    SSE_EVENT_HEARTBEAT,
+    SSE_EVENT_QUEUED,
+    SSE_EVENT_TOKEN,
+    TERMINAL_SSE_EVENTS,
+    ChatManagerError,
+)
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.falkordb_adapter import AdapterError, FalkorDBAdapter
 from kb_core_ui.rag.indexing import EmbeddingProvider
@@ -45,15 +55,6 @@ from kb_core_ui.rag.workspaces import WorkspaceError, WorkspaceRegistry
 # Contract constants
 # --------------------------------------------------------------------------- #
 
-SSE_EVENT_QUEUED = "queued"
-SSE_EVENT_HEARTBEAT = "heartbeat"
-SSE_EVENT_TOKEN = "token"
-SSE_EVENT_COMPLETED = "completed"
-SSE_EVENT_CANCELLED = "cancelled"
-SSE_EVENT_ERROR = "error"
-
-TERMINAL_SSE_EVENTS = frozenset({SSE_EVENT_COMPLETED, SSE_EVENT_CANCELLED, SSE_EVENT_ERROR})
-
 DEFAULT_SUGGESTIONS: tuple[str, ...] = (
     "What does this workspace cover?",
     "Summarize the most recently ingested source.",
@@ -66,18 +67,6 @@ DEFAULT_MAX_CONCURRENT_STREAMS_PER_WORKSPACE = 4
 _CANCEL_POLL_ATTEMPTS = 15
 _CANCEL_POLL_INTERVAL_S = 0.02
 _HEARTBEAT_EVERY_POLLS = 5
-
-
-class ChatManagerError(RuntimeError):
-    """Carries the exact HTTP status the route layer must map to: 404 for an
-    unknown query id or thread, 409 for a duplicate in-flight query id, 413
-    for an oversized request body, 429 for exceeding the concurrent-stream
-    cap. Never carries adapter/provider internals in its message (secrets
-    stay server-only)."""
-
-    def __init__(self, status: int, message: str) -> None:
-        super().__init__(message)
-        self.status = status
 
 
 def _now() -> str:
@@ -218,8 +207,22 @@ class ChatManager:
         self.adapter_factory = adapter_factory or (
             lambda workspace_id: FalkorDBAdapter(config, workspace_id)
         )
-        self.chat_model_factory = chat_model_factory or FakeChatModel
-        self.embeddings = embeddings or HashingEmbeddingProvider()
+        if chat_model_factory is None:
+            if config.llm_provider not in {"fake", "harness-fake"}:
+                raise ValueError(
+                    f"unsupported RAG_LLM_PROVIDER {config.llm_provider!r}; "
+                    "configure an explicit chat_model_factory"
+                )
+            chat_model_factory = FakeChatModel
+        if embeddings is None:
+            if config.embedding_model not in {"fake", "harness-fake"}:
+                raise ValueError(
+                    f"unsupported RAG_EMBEDDING_MODEL {config.embedding_model!r}; "
+                    "configure an explicit embeddings provider"
+                )
+            embeddings = HashingEmbeddingProvider()
+        self.chat_model_factory = chat_model_factory
+        self.embeddings = embeddings
         self.history_store_factory = history_store_factory or (
             lambda adapter: ChatHistoryStore(adapter, config=config)
         )

@@ -19,7 +19,10 @@ from kb_core_ui.errors import KbError
 from kb_core_ui.memory import VALID_KINDS
 from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
-from kb_core_ui.rag import SSE_EVENT_HEARTBEAT, AdapterError, ChatManagerError, WorkspaceError
+from kb_core_ui.rag.chat_contract import SSE_EVENT_HEARTBEAT, ChatManagerError
+from kb_core_ui.rag.agui import AgUiError, agui_stream, parse_run_input
+from kb_core_ui.rag.falkordb_adapter import AdapterError
+from kb_core_ui.rag.workspaces import WorkspaceError
 from kb_core_ui.server.mux import Mux, clean_path
 from kb_core_ui.server.wire import (
     SSE_HEARTBEAT_FRAME,
@@ -113,6 +116,8 @@ class Server:
             for method in ("GET", "POST", "DELETE"):
                 self.mux.handle(f"{method} /api/rag/workspaces", self.handle_rag_workspaces)
                 self.mux.handle(f"{method} /api/rag/workspaces/", self.handle_rag_workspaces)
+        if self.chat_manager is not None:
+            self.mux.handle("POST /api/rag/agent", self.handle_rag_agent)
 
         self.mux.handle("/", self.handle_root)
 
@@ -382,6 +387,16 @@ class Server:
         return write_json({"removed": True})
 
     # ---- GraphRAG workspace management --------------------------------
+
+    def handle_rag_agent(self, req: Request) -> Response:
+        try:
+            run = parse_run_input(_json_object(req.body))
+            self.workspace_manager.registry.get(run.workspace_id)
+        except AgUiError as exc:
+            return write_error(400, str(exc))
+        except WorkspaceError as exc:
+            return write_error(404, str(exc))
+        return write_sse(lambda: agui_stream(self.chat_manager, run))
 
     def handle_rag_workspaces(self, req: Request) -> Response:
         rest = _trim_prefix(req.path, "/api/rag/workspaces").strip("/")

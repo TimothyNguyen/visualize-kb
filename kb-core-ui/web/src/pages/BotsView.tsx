@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import type { BotDef, BotRun, BotRunSummary, RunStatus } from "../api/types"
 import { getBotRun, getBotRuns, getBots, runBot } from "../api/client"
 import "./BotsView.css"
@@ -54,8 +54,21 @@ export function BotsView() {
   }, [])
 
   useEffect(() => {
-    loadRuns()
-  }, [loadRuns])
+    let cancelled = false
+    getBotRuns()
+      .then((list) => {
+        if (!cancelled) {
+          setRuns(list)
+          setRunsError(null)
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setRunsError(err instanceof Error ? err.message : "failed to load run history")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // --- Live polling of the selected run while it is running. ---
   // The effect re-runs whenever the selected run id or status changes. While
@@ -66,9 +79,6 @@ export function BotsView() {
   // no interval is ever leaked.
   const selectedId = selectedRun?.id
   const selectedStatus = selectedRun?.status
-  const runsFinishedRef = useRef<() => void>(loadRuns)
-  runsFinishedRef.current = loadRuns
-
   useEffect(() => {
     if (!selectedId || selectedStatus !== "running") return
     let cancelled = false
@@ -80,7 +90,7 @@ export function BotsView() {
         setOutputError(null)
         if (updated.status !== "running") {
           // A run just finished: refresh the history list so its status pill updates.
-          runsFinishedRef.current()
+          void loadRuns()
         }
       } catch (err: unknown) {
         if (!cancelled) setOutputError(err instanceof Error ? err.message : "failed to poll run")
@@ -90,7 +100,7 @@ export function BotsView() {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [selectedId, selectedStatus])
+  }, [loadRuns, selectedId, selectedStatus])
 
   function toggleForm(bot: BotDef) {
     if (openForm === bot.name) {

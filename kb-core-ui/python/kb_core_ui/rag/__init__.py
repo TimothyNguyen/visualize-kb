@@ -64,7 +64,7 @@ from kb_core_ui.rag.reconciler import (
     source_version,
 )
 from kb_core_ui.rag.manager import WorkspaceManager
-from kb_core_ui.rag.chat_manager import (
+from kb_core_ui.rag.chat_contract import (
     SSE_EVENT_CANCELLED,
     SSE_EVENT_COMPLETED,
     SSE_EVENT_ERROR,
@@ -72,41 +72,7 @@ from kb_core_ui.rag.chat_manager import (
     SSE_EVENT_QUEUED,
     SSE_EVENT_TOKEN,
     TERMINAL_SSE_EVENTS,
-    ChatManager,
     ChatManagerError,
-    HashingEmbeddingProvider,
-    chat_contract_payload,
-)
-from kb_core_ui.rag.persistence import (
-    ChatHistoryStore,
-    ChatThreadAdapter,
-    FakeChatBackend,
-    FakeChatThreadAdapter,
-    PersistedTurn,
-    PersistenceError,
-    thread_key,
-    validate_thread_id,
-)
-from kb_core_ui.rag.workflow import (
-    ALLOWED_LABELS_AND_RELATIONSHIPS,
-    ALLOWED_PROPERTIES,
-    ALLOWED_PARAMETERS,
-    CANCELLED_TEXT,
-    INSUFFICIENT_EVIDENCE_TEXT,
-    PROVIDER_UNAVAILABLE_TEXT,
-    ChatAnswer,
-    ChatModel,
-    ChatRequest,
-    ChatResponse,
-    ChatWorkflow,
-    ChatWorkflowState,
-    EvidenceItem,
-    FakeChatModel,
-    ProviderError,
-    ProviderTransientError,
-    RetrievalLimits,
-    WorkflowError,
-    validate_generated_cypher,
 )
 from kb_core_ui.rag.workspaces import (
     RUN_CANCELLED,
@@ -128,6 +94,52 @@ from kb_core_ui.rag.workspaces import (
     WorkspaceRegistry,
     workspace_graph_name,
 )
+
+_OPTIONAL_EXPORTS = {
+    "ChatManager": "kb_core_ui.rag.chat_manager",
+    "HashingEmbeddingProvider": "kb_core_ui.rag.chat_manager",
+    "chat_contract_payload": "kb_core_ui.rag.chat_manager",
+    "ChatHistoryStore": "kb_core_ui.rag.persistence",
+    "ChatThreadAdapter": "kb_core_ui.rag.persistence",
+    "FakeChatBackend": "kb_core_ui.rag.persistence",
+    "FakeChatThreadAdapter": "kb_core_ui.rag.persistence",
+    "PersistedTurn": "kb_core_ui.rag.persistence",
+    "PersistenceError": "kb_core_ui.rag.persistence",
+    "thread_key": "kb_core_ui.rag.persistence",
+    "validate_thread_id": "kb_core_ui.rag.persistence",
+    "ALLOWED_LABELS_AND_RELATIONSHIPS": "kb_core_ui.rag.workflow",
+    "ALLOWED_PROPERTIES": "kb_core_ui.rag.workflow",
+    "ALLOWED_PARAMETERS": "kb_core_ui.rag.workflow",
+    "CANCELLED_TEXT": "kb_core_ui.rag.workflow",
+    "INSUFFICIENT_EVIDENCE_TEXT": "kb_core_ui.rag.workflow",
+    "PROVIDER_UNAVAILABLE_TEXT": "kb_core_ui.rag.workflow",
+    "ChatAnswer": "kb_core_ui.rag.workflow",
+    "ChatModel": "kb_core_ui.rag.workflow",
+    "ChatRequest": "kb_core_ui.rag.workflow",
+    "ChatResponse": "kb_core_ui.rag.workflow",
+    "ChatWorkflow": "kb_core_ui.rag.workflow",
+    "ChatWorkflowState": "kb_core_ui.rag.workflow",
+    "EvidenceItem": "kb_core_ui.rag.workflow",
+    "FakeChatModel": "kb_core_ui.rag.workflow",
+    "ProviderError": "kb_core_ui.rag.workflow",
+    "ProviderTransientError": "kb_core_ui.rag.workflow",
+    "RetrievalLimits": "kb_core_ui.rag.workflow",
+    "WorkflowError": "kb_core_ui.rag.workflow",
+    "validate_generated_cypher": "kb_core_ui.rag.workflow",
+}
+
+
+def __getattr__(name: str):
+    """Load LangGraph-backed exports only when callers request them."""
+
+    module_name = _OPTIONAL_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(name)
+    from importlib import import_module
+
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value
 
 __all__ = [
     "AMBIGUOUS",

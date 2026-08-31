@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
@@ -44,6 +45,7 @@ from kb_core_ui.rag import (
     WorkspaceRegistry,
     WorkspaceManager,
 )
+from kb_core_ui.rag.coordinator import IngestionCoordinator
 from kb_core_ui.server import Server
 from kb_core_ui.server.httpd import listen_and_serve
 from kb_core_ui.store import Store
@@ -62,8 +64,10 @@ REQUIRED_STAGES = (
     "langgraph_rag",
     "chat_persistence",
     "chat_http_contract",
+    "agui_runtime",
     "scoped_read",
     "workspace_management",
+    "ingestion_coordinator",
     "source_delete_isolation",
     "registry_reopen",
     "graph_cleanup",
@@ -84,6 +88,38 @@ def _config(backend: str) -> RagConfig:
     if backend == "fake":
         values["FALKORDB_URL"] = "falkor://fake:6379"
     return RagConfig.from_env(values)
+
+
+@contextlib.contextmanager
+def _serving(app: Server, name: str):
+    """Runs the real socket server so a stage speaks HTTP, not method calls."""
+
+    stopped = threading.Event()
+    listening = threading.Event()
+    bound_port: list[int] = []
+
+    def ready(port: int) -> None:
+        bound_port.append(port)
+        listening.set()
+
+    thread = threading.Thread(
+        target=listen_and_serve,
+        args=("127.0.0.1", 0, app),
+        kwargs={"stop_event": stopped, "ready": ready},
+        name=name,
+        daemon=True,
+    )
+    thread.start()
+    if not listening.wait(5) or not bound_port:
+        stopped.set()
+        raise WorkflowFailure(f"{name} did not start")
+    try:
+        yield f"http://127.0.0.1:{bound_port[0]}"
+    finally:
+        stopped.set()
+        thread.join(timeout=5)
+    if thread.is_alive():
+        raise WorkflowFailure(f"{name} did not stop")
 
 
 def _stage(report: dict[str, Any], name: str, fn: Callable[[], dict[str, Any]]) -> bool:
@@ -695,26 +731,9 @@ def execute_rag_workflow(
             workspace_manager=manager,
             chat_manager=chat,
         )
-        stopped = threading.Event()
-        listening = threading.Event()
-        bound_port: list[int] = []
-
-        def ready(port: int) -> None:
-            bound_port.append(port)
-            listening.set()
-
-        thread = threading.Thread(
-            target=listen_and_serve,
-            args=("127.0.0.1", 0, app),
-            kwargs={"stop_event": stopped, "ready": ready},
-            name="rag-chat-contract-http",
-            daemon=True,
-        )
-        thread.start()
-        if not listening.wait(5) or not bound_port:
-            stopped.set()
-            raise WorkflowFailure("chat HTTP server did not start")
-        base = f"http://127.0.0.1:{bound_port[0]}/api/rag/workspaces/{workspace_id}/chat"
+        server = _serving(app, "rag-chat-contract-http")
+        origin = server.__enter__()
+        base = f"{origin}/api/rag/workspaces/{workspace_id}/chat"
 
         def request_json(
             method: str, url: str, payload: dict[str, Any] | None = None
@@ -789,11 +808,8 @@ def execute_rag_workflow(
             if status != 400 or "error" not in error:
                 raise WorkflowFailure("chat validation error mapping changed")
         finally:
-            stopped.set()
-            thread.join(timeout=5)
+            server.__exit__(None, None, None)
             store.close()
-        if thread.is_alive():
-            raise WorkflowFailure("chat HTTP server did not stop")
         return {
             "transport": "http",
             "complete_status": 200,
@@ -801,6 +817,134 @@ def execute_rag_workflow(
             "cancelled": True,
             "thread_turns": 1,
             "validation_status": 400,
+        }
+
+    def agui_runtime_stage() -> dict[str, Any]:
+        """The boundary the self-hosted CopilotKit runtime actually calls.
+
+        CopilotKit runs in Node and forwards browser turns to POST
+        /api/rag/agent, so this drives that endpoint over real HTTP and asserts
+        AG-UI framing, workspace scope carried in the state snapshot, abort, and
+        the scope rejections a browser must never be able to talk its way past.
+        """
+
+        assert adapter is not None
+        workspace_id = state["workspace"].id
+        config = _config(backend)
+        manager = WorkspaceManager(
+            registry,
+            config,
+            adapter_factory=lambda _workspace_id: _BorrowedAdapter(adapter),
+        )
+        chat = ChatManager(
+            registry,
+            config,
+            adapter_factory=lambda _workspace_id: _BorrowedAdapter(adapter),
+            history_store_factory=lambda borrowed: ChatHistoryStore(borrowed, config=config),
+            embeddings=state["embeddings"],
+            sleep=lambda _seconds: None,
+        )
+        store = Store(str(work_dir / "agui.db"))
+        app = Server(store, str(work_dir), workspace_manager=manager, chat_manager=chat)
+
+        def run_input(**overrides: Any) -> dict[str, Any]:
+            payload: dict[str, Any] = {
+                "threadId": "agui-thread",
+                "runId": "agui-run",
+                "messages": [{"role": "user", "content": "graph records"}],
+                "state": {
+                    "workspace_id": workspace_id,
+                    "strategy": "auto",
+                    "allowed_source_ids": sorted(state["envelopes"]),
+                },
+            }
+            payload.update(overrides)
+            return payload
+
+        def post(url: str, payload: dict[str, Any]) -> tuple[int, str]:
+            request = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    return response.status, response.read().decode("utf-8")
+            except urllib.error.HTTPError as exc:
+                return exc.code, exc.read().decode("utf-8")
+
+        def frames(text: str) -> list[dict[str, Any]]:
+            return [
+                json.loads(line[len("data: ") :])
+                for line in text.split("\n")
+                if line.startswith("data: ")
+            ]
+
+        try:
+            with _serving(app, "rag-agui-http") as origin:
+                agent_url = origin + "/api/rag/agent"
+
+                status, text = post(agent_url, run_input())
+                events = frames(text)
+                types = [event["type"] for event in events]
+                if status != 200 or types[0] != "RUN_STARTED" or types[-1] != "RUN_FINISHED":
+                    raise WorkflowFailure(f"AG-UI run framing differs: {status} {types!r}")
+                if types.count("RUN_FINISHED") + types.count("RUN_ERROR") != 1:
+                    raise WorkflowFailure(f"AG-UI run had more than one terminal event: {types!r}")
+                if "TEXT_MESSAGE_CONTENT" not in types:
+                    raise WorkflowFailure("AG-UI run streamed no assistant text")
+                if ": heartbeat\n\n" not in text or '"heartbeat"' in text:
+                    raise WorkflowFailure("AG-UI heartbeat was not a comment frame")
+
+                snapshot = next(
+                    event["snapshot"] for event in events if event["type"] == "STATE_SNAPSHOT"
+                )
+                if snapshot.get("workspace_id") != workspace_id:
+                    raise WorkflowFailure("AG-UI state snapshot dropped the workspace scope")
+                answer = snapshot["last_answer"]
+                if not answer.get("citations") or answer.get("error"):
+                    raise WorkflowFailure(f"AG-UI answer was not grounded: {answer!r}")
+                cited_sources = {citation["source_id"] for citation in answer["citations"]}
+                if not cited_sources <= set(state["envelopes"]):
+                    raise WorkflowFailure(f"AG-UI answer cited foreign sources: {cited_sources!r}")
+
+                # Abort: the browser's cancel reaches the same in-flight run id.
+                abort_input = run_input(runId="agui-abort", threadId="agui-abort")
+                request = urllib.request.Request(
+                    agent_url,
+                    data=json.dumps(abort_input).encode("utf-8"),
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    opening = response.readline().decode("utf-8")
+                    cancelled = chat.cancel(workspace_id, "agui-abort")
+                    aborted = frames(opening + response.read().decode("utf-8"))
+                if not cancelled.get("cancelled"):
+                    raise WorkflowFailure("AG-UI run id was not cancellable mid-stream")
+                abort_types = [event["type"] for event in aborted]
+                if abort_types[-1] != "RUN_ERROR" or "RUN_FINISHED" in abort_types:
+                    raise WorkflowFailure(f"aborted AG-UI run did not end in RUN_ERROR: {abort_types!r}")
+
+                unscoped, _ = post(agent_url, run_input(state={"strategy": "auto"}))
+                foreign, _ = post(agent_url, run_input(state={"workspace_id": "not-a-workspace"}))
+                empty, _ = post(agent_url, run_input(messages=[]))
+                if (unscoped, foreign, empty) != (400, 404, 400):
+                    raise WorkflowFailure(
+                        f"AG-UI scope rejections changed: {(unscoped, foreign, empty)!r}"
+                    )
+        finally:
+            store.close()
+
+        return {
+            "transport": "http",
+            "run_events": len(types),
+            "terminal_events": 1,
+            "snapshot_workspace_id": workspace_id,
+            "cited_sources": sorted(cited_sources),
+            "aborted": True,
+            "scope_rejections": {"unscoped": 400, "unknown_workspace": 404, "empty_message": 400},
         }
 
     def read_stage() -> dict[str, Any]:
@@ -861,6 +1005,45 @@ def execute_rag_workflow(
             )
         return {"deleted_source": deleted_source, "remaining_nodes": count, "source_ids": source_ids}
 
+    def coordinator_stage() -> dict[str, Any]:
+        workspace_id = "rag-coordinator"
+        graph_dir = work_dir / "coordinator-repo" / "kb-core-out"
+        graph_dir.mkdir(parents=True, exist_ok=True)
+        graph_path = graph_dir / "graph.json"
+        graph_path.write_text(
+            json.dumps(state["fixture"]["sources"][0]["graph"]), encoding="utf-8"
+        )
+        registry.create(workspace_id, "Coordinator")
+        config = _config(backend)
+
+        def adapter_factory(selected_workspace_id: str):
+            driver = state.get("driver") if backend == "fake" else None
+            return FalkorDBAdapter(config, selected_workspace_id, driver=driver)
+
+        coordinator = IngestionCoordinator(
+            registry,
+            adapter_factory=adapter_factory,
+            embeddings=_HarnessEmbeddings(),
+        )
+        manager = WorkspaceManager(
+            registry,
+            config,
+            adapter_factory=adapter_factory,
+            ingestion_coordinator=coordinator,
+        )
+        manager.add_source(workspace_id, "repo", "local_repo", str(graph_dir.parent))
+        run = manager.start_ingestion(workspace_id, "repo")
+        stats = manager.stats(workspace_id)
+        manager.delete_workspace(workspace_id)
+        if run["status"] != "succeeded" or stats["nodes"] < 1:
+            raise WorkflowFailure(f"coordinator did not publish source: {run!r}")
+        return {
+            "run_status": run["status"],
+            "nodes": stats["nodes"],
+            "reconcile_status": run["result"]["reconcile_status"],
+            "workspace_cleaned": True,
+        }
+
     def reopen_stage() -> dict[str, Any]:
         reopened = WorkspaceRegistry(str(work_dir / "workspaces.json")).get(state["workspace"].id)
         statuses = {source_id: source.status for source_id, source in reopened.sources.items()}
@@ -888,8 +1071,10 @@ def execute_rag_workflow(
         ("langgraph_rag", langgraph_rag_stage),
         ("chat_persistence", chat_persistence_stage),
         ("chat_http_contract", chat_http_contract_stage),
+        ("agui_runtime", agui_runtime_stage),
         ("scoped_read", read_stage),
         ("workspace_management", management_stage),
+        ("ingestion_coordinator", coordinator_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),
         ("graph_cleanup", cleanup_stage),

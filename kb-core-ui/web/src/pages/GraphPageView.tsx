@@ -6,24 +6,27 @@ import { GlobalGraph } from "../components/GlobalGraph/GlobalGraph"
 import "./GraphPageView.css"
 
 export function GraphPageView() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const focusSymbol = searchParams.get("symbol") ?? ""
   const depth = Number(searchParams.get("depth") ?? "2")
+  return <GraphPageContent key={`${focusSymbol}:${depth}`} focusSymbol={focusSymbol} depth={depth} />
+}
+
+function GraphPageContent({ focusSymbol, depth }: { focusSymbol: string; depth: number }) {
+  const [, setSearchParams] = useSearchParams()
 
   const [nodes, setNodes] = useState<SymbolRef[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
   const [center, setCenter] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [overview, setOverview] = useState(false)
+  const [overview, setOverview] = useState(!focusSymbol)
 
   const [query, setQuery] = useState(focusSymbol)
   const [suggestions, setSuggestions] = useState<SymbolRef[]>([])
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
 
     async function load() {
       if (focusSymbol) {
@@ -70,10 +73,7 @@ export function GraphPageView() {
   }
 
   useEffect(() => {
-    if (!query || query === focusSymbol) {
-      setSuggestions([])
-      return
-    }
+    if (!query || query === focusSymbol) return
     let cancelled = false
     search(query).then((r) => {
       if (!cancelled) setSuggestions(r.slice(0, 8))
@@ -82,6 +82,8 @@ export function GraphPageView() {
       cancelled = true
     }
   }, [query, focusSymbol])
+
+  const visibleSuggestions = query && query !== focusSymbol ? suggestions : []
 
   function focusOn(id: string) {
     setSearchParams(id ? { symbol: id, depth: String(depth) } : {})
@@ -99,9 +101,9 @@ export function GraphPageView() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          {suggestions.length > 0 && (
+          {visibleSuggestions.length > 0 && (
             <div className="graph-focus-suggestions">
-              {suggestions.map((s) => (
+              {visibleSuggestions.map((s) => (
                 <button type="button" key={s.id} onClick={() => focusOn(s.id)}>
                   {s.name} <span>{s.filePath}</span>
                 </button>

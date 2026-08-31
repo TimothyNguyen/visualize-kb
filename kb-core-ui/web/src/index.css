@@ -133,3 +133,11 @@ pre {
   overflow-y: auto;
   overflow-x: hidden;
 }
+
+.route-loading {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  color: var(--text-dim);
+  font: 12px var(--mono);
+}

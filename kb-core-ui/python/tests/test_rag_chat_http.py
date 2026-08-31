@@ -100,6 +100,60 @@ def _stream(app, target):
     return resp, chunks
 
 
+def _agui(app, payload):
+    from kb_core_ui.server.wire import Request
+
+    req = Request(
+        method="POST",
+        raw_path="/api/rag/agent",
+        path="/api/rag/agent",
+        query={},
+        query_string="",
+        body=json.dumps(payload).encode(),
+    )
+    resp = app.serve(req)
+    chunks = list(resp.stream()) if resp.stream is not None else []
+    events = [
+        json.loads(line.removeprefix("data: "))
+        for chunk in chunks
+        for line in chunk.decode().splitlines()
+        if line.startswith("data: ")
+    ]
+    return resp, events
+
+
+def test_agui_agent_stream_maps_workspace_chat_to_canonical_events(tmp_path):
+    app = _app(tmp_path)
+    response, events = _agui(
+        app,
+        {
+            "threadId": "thread-1",
+            "runId": "run-1",
+            "state": {"workspace_id": "alpha", "strategy": "local"},
+            "messages": [{"id": "user-1", "role": "user", "content": "What is here?"}],
+            "tools": [],
+            "context": [],
+        },
+    )
+
+    assert response.status == 200
+    assert events[0] == {"type": "RUN_STARTED", "threadId": "thread-1", "runId": "run-1"}
+    assert [event["type"] for event in events].count("RUN_FINISHED") == 1
+    snapshot = next(event for event in events if event["type"] == "STATE_SNAPSHOT")
+    assert snapshot["snapshot"]["last_answer"]["workspace_id"] == "alpha"
+
+
+def test_agui_agent_rejects_missing_or_unknown_workspace_before_streaming(tmp_path):
+    app = _app(tmp_path)
+    base = {
+        "threadId": "thread-1",
+        "runId": "run-1",
+        "messages": [{"id": "user-1", "role": "user", "content": "hello"}],
+    }
+    assert _agui(app, {**base, "state": {}})[0].status == 400
+    assert _agui(app, {**base, "state": {"workspace_id": "missing"}})[0].status == 404
+
+
 def test_chat_disabled_returns_404(tmp_path):
     store = Store(str(tmp_path / "graph.db"))
     app = Server(store, str(tmp_path))
