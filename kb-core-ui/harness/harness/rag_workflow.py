@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -12,12 +13,16 @@ from typing import Any, Callable
 
 from kb_core_ui.rag import (
     DocumentSetIngestor,
+    FalkorGraphDocumentLoader,
+    FalkorVectorBridge,
     FalkorDBAdapter,
     GraphDocument,
     GraphDocumentNode,
     GraphDocumentRelationship,
+    HybridRetriever,
     RagConfig,
     ReconcileError,
+    RetrievalIndexer,
     RUN_FAILED,
     RUN_RUNNING,
     SOURCE_READY,
@@ -34,8 +39,10 @@ REQUIRED_STAGES = (
     "workspace_lifecycle",
     "source_ingestion",
     "falkordb_reconcile",
+    "retrieval_indexing",
     "idempotent_reconcile",
     "refresh_retry_reconcile",
+    "hybrid_retrieval",
     "scoped_read",
     "source_delete_isolation",
     "registry_reopen",
@@ -137,6 +144,33 @@ class _FixtureDocumentExtractor:
         return GraphDocument(tuple(nodes), tuple(relationships))
 
 
+class _HarnessEmbeddings:
+    dimension = 8
+
+    def _embed(self, text: str) -> list[float]:
+        values = [0.0] * self.dimension
+        for index, byte in enumerate(text.lower().encode("utf-8")):
+            values[(byte + index) % self.dimension] += 1.0
+        norm = math.sqrt(sum(value * value for value in values)) or 1.0
+        return [value / norm for value in values]
+
+    def embed_documents(self, texts):
+        return [self._embed(text) for text in texts]
+
+    def embed_query(self, text):
+        return self._embed(text)
+
+
+class _CaptureFalkorGraph:
+    def __init__(self):
+        self.documents = []
+
+    def add_graph_documents(self, documents, **kwargs):
+        if kwargs != {"include_source": True}:
+            raise WorkflowFailure(f"unexpected FalkorDBGraph options: {kwargs!r}")
+        self.documents.extend(documents)
+
+
 def execute_rag_workflow(
     *, backend: str, fixture_path: Path, work_dir: Path, report_path: Path
 ) -> dict[str, Any]:
@@ -151,6 +185,7 @@ def execute_rag_workflow(
     registry = WorkspaceRegistry(str(work_dir / "workspaces.json"))
     state: dict[str, Any] = {}
     adapter: FalkorDBAdapter | None = None
+    indexer: RetrievalIndexer | None = None
 
     def workspace_stage() -> dict[str, Any]:
         fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
@@ -204,20 +239,54 @@ def execute_rag_workflow(
         }
 
     def reconcile_stage() -> dict[str, Any]:
-        nonlocal adapter
+        nonlocal adapter, indexer
         driver = InMemoryDriver() if backend == "fake" else None
         adapter = FalkorDBAdapter(_config(backend), state["workspace"].id, driver=driver)
-        reconciler = SourceReconciler(adapter, registry)
+        state["embeddings"] = _HarnessEmbeddings()
+        indexer = RetrievalIndexer(adapter, state["embeddings"])
+        reconciler = SourceReconciler(adapter, registry, stage_indexer=indexer.index_stage)
         results = {}
+        index_results = {}
         for source_id, envelope in state["envelopes"].items():
             result = reconciler.reconcile(
                 state["workspace"].id, source_id, state["runs"][source_id], envelope
             )
             results[source_id] = result.status
+            index_results[source_id] = {
+                "chunks": len(envelope.chunks),
+                "nodes": len(envelope.nodes),
+            }
+        state["index_results"] = index_results
         health = adapter.health()
         if not health.connected or not health.graph_exists:
             raise WorkflowFailure(f"FalkorDB unhealthy after reconcile: {health!r}")
         return {"graph_name": adapter.graph_name, "results": results}
+
+    def indexing_stage() -> dict[str, Any]:
+        assert adapter is not None
+        indexes = adapter.ensure_retrieval_indexes(
+            state["embeddings"].dimension, "kb-core.retrieval.v1"
+        )
+        if indexes != 4:
+            raise WorkflowFailure(f"expected four retrieval indexes, got {indexes}")
+        graph = _CaptureFalkorGraph()
+        loader = FalkorGraphDocumentLoader(graph)
+        for envelope in state["envelopes"].values():
+            loader.load(envelope)
+        vector_stores = 0
+        if backend == "falkordb":
+            bridge = FalkorVectorBridge(
+                _config(backend), adapter.graph_name, state["embeddings"]
+            )
+            bridge.connect("TextChunk", text_property="text")
+            bridge.connect("KnowledgeNode", text_property="text")
+            vector_stores = 2
+        return {
+            "indexes": indexes,
+            "graph_documents": len(graph.documents),
+            "falkordb_vector_stores": vector_stores,
+            "sources": state["index_results"],
+        }
 
     def idempotent_stage() -> dict[str, Any]:
         assert adapter is not None
@@ -273,7 +342,10 @@ def execute_rag_workflow(
 
         retry = registry.queue_run(state["workspace"].id, source_id)
         registry.transition_run(state["workspace"].id, retry.id, RUN_RUNNING)
-        result = SourceReconciler(adapter, registry).reconcile(
+        assert indexer is not None
+        result = SourceReconciler(
+            adapter, registry, stage_indexer=indexer.index_stage
+        ).reconcile(
             state["workspace"].id, source_id, retry.id, refreshed
         )
         expected_identities = sorted(node.source_identity for node in refreshed.nodes)
@@ -287,6 +359,21 @@ def execute_rag_workflow(
             "failed_run": "rolled_back",
             "retry": result.status,
             "active_identities": actual_identities,
+        }
+
+    def hybrid_stage() -> dict[str, Any]:
+        assert adapter is not None
+        hits = HybridRetriever(adapter, state["embeddings"], max_k=10).search(
+            "graph records", k=5, source_ids=tuple(sorted(state["envelopes"]))
+        )
+        if not hits:
+            raise WorkflowFailure("hybrid retrieval returned no evidence")
+        if not all(hit.source_id in state["envelopes"] for hit in hits):
+            raise WorkflowFailure("hybrid retrieval escaped source scope")
+        return {
+            "hits": len(hits),
+            "channels": sorted({channel for hit in hits for channel in hit.channels}),
+            "source_ids": sorted({hit.source_id for hit in hits}),
         }
 
     def read_stage() -> dict[str, Any]:
@@ -337,8 +424,10 @@ def execute_rag_workflow(
         ("workspace_lifecycle", workspace_stage),
         ("source_ingestion", ingestion_stage),
         ("falkordb_reconcile", reconcile_stage),
+        ("retrieval_indexing", indexing_stage),
         ("idempotent_reconcile", idempotent_stage),
         ("refresh_retry_reconcile", refresh_stage),
+        ("hybrid_retrieval", hybrid_stage),
         ("scoped_read", read_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),
@@ -381,3 +470,4 @@ def run_rag_workflow(args) -> int:
             shutil.rmtree(temp_root, ignore_errors=True)
     print(json.dumps(report, separators=(",", ":")))
     return 0 if report["status"] == "passed" else 1
+    RetrievalIndexer,

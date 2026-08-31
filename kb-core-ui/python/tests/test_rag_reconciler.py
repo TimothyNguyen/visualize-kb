@@ -137,3 +137,21 @@ def test_retry_converges_to_deterministic_version(tmp_path: Path) -> None:
     assert result.version.startswith("version_")
     assert registry.get("alpha").sources["repo"].active_version == result.version
     assert registry.get("alpha").runs[retry.id].status == RUN_SUCCEEDED
+
+
+def test_stage_indexer_runs_before_publish(tmp_path: Path) -> None:
+    registry, run_id = running_registry(tmp_path)
+    adapter = FakeReconcileAdapter()
+    indexed = []
+
+    SourceReconciler(
+        adapter,
+        registry,
+        stage_indexer=lambda envelope, version: indexed.append((envelope, version)),
+    ).reconcile("alpha", "repo", run_id, ENVELOPE)
+
+    assert indexed[0][0] is ENVELOPE
+    assert indexed[0][1].startswith("version_")
+    assert next(i for i, call in enumerate(adapter.calls) if call[0] == "verify") < next(
+        i for i, call in enumerate(adapter.calls) if call[0] == "publish"
+    )

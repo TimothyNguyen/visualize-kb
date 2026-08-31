@@ -10,6 +10,7 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.contracts import GraphEnvelope
+from kb_core_ui.rag.indexing import SearchCandidate
 from kb_core_ui.rag.reconciler import SourceManifest, StageCounts
 from kb_core_ui.rag.workspaces import workspace_graph_name
 
@@ -411,6 +412,204 @@ class FalkorDBAdapter:
             "ingestion_version: $version}]-() WHERE coalesce(r.active, false) = false DELETE r",
             params,
         )
+
+    def write_embeddings(
+        self,
+        envelope: GraphEnvelope,
+        version: str,
+        chunk_rows: Sequence[dict[str, Any]],
+        node_rows: Sequence[dict[str, Any]],
+    ) -> None:
+        if envelope.workspace_id != self.workspace_id:
+            raise AdapterError("embedding envelope does not match adapter workspace")
+        common = {
+            "workspace_id": self.workspace_id,
+            "source_id": envelope.source_id,
+            "version": version,
+        }
+        if chunk_rows:
+            self._write(
+                "UNWIND $rows AS row "
+                "MATCH (c:TextChunk {id: row.id, workspace_id: $workspace_id, "
+                "source_id: $source_id, ingestion_version: $version}) "
+                "SET c.embedding = vecf32(row.embedding)",
+                {**common, "rows": list(chunk_rows)},
+            )
+        if node_rows:
+            self._write(
+                "UNWIND $rows AS row "
+                "MATCH (n:KnowledgeNode {id: row.id, workspace_id: $workspace_id, "
+                "source_id: $source_id, ingestion_version: $version}) "
+                "SET n.embedding = vecf32(row.embedding), n.embedding_text = row.embedding_text",
+                {**common, "rows": list(node_rows)},
+            )
+
+    def ensure_retrieval_indexes(self, dimension: int, index_version: str) -> int:
+        if not 1 <= dimension <= 4_096:
+            raise AdapterError("vector index dimension must be between 1 and 4096")
+        manifests = self.read_query(
+            "MATCH (m:IndexManifest {workspace_id: $workspace_id}) "
+            "RETURN m.index_version, m.dimension"
+        )
+        current = (str(manifests[0][0]), int(manifests[0][1])) if manifests else None
+        if current != (index_version, dimension):
+            if current is not None:
+                self._admin_query(
+                    "DROP INDEX FOR (n:TextChunk) ON (n.embedding)",
+                    {"workspace_id": self.workspace_id},
+                )
+                self._admin_query(
+                    "DROP INDEX FOR (n:KnowledgeNode) ON (n.embedding)",
+                    {"workspace_id": self.workspace_id},
+                )
+            if current is None:
+                self._admin_query(
+                    "CREATE FULLTEXT INDEX FOR (n:TextChunk) ON (n.text)",
+                    {"workspace_id": self.workspace_id},
+                )
+                self._admin_query(
+                    "CREATE FULLTEXT INDEX FOR (n:KnowledgeNode) ON (n.label, n.text)",
+                    {"workspace_id": self.workspace_id},
+                )
+            self._admin_query(
+                "CREATE VECTOR INDEX FOR (n:TextChunk) ON (n.embedding) "
+                f"OPTIONS {{dimension: {dimension}, similarityFunction: 'cosine'}}",
+                {"workspace_id": self.workspace_id},
+            )
+            self._admin_query(
+                "CREATE VECTOR INDEX FOR (n:KnowledgeNode) ON (n.embedding) "
+                f"OPTIONS {{dimension: {dimension}, similarityFunction: 'cosine'}}",
+                {"workspace_id": self.workspace_id},
+            )
+            self._write(
+                "MERGE (m:IndexManifest {workspace_id: $workspace_id}) "
+                "SET m.index_version = $index_version, m.dimension = $dimension",
+                {
+                    "workspace_id": self.workspace_id,
+                    "index_version": index_version,
+                    "dimension": dimension,
+                },
+            )
+        rows = self._admin_query(
+            "CALL db.indexes() YIELD label, properties, types, status "
+            "WHERE label IN ['TextChunk', 'KnowledgeNode'] "
+            "RETURN label, properties, types, status",
+            {"workspace_id": self.workspace_id},
+        )
+        actual: dict[str, dict[str, set[str]]] = {}
+        for label, properties, types, status in rows:
+            if str(status).upper() != "OPERATIONAL":
+                continue
+            label_types = actual.setdefault(str(label), {})
+            if isinstance(types, Mapping):
+                for prop, values in types.items():
+                    label_types.setdefault(str(prop), set()).update(map(str, values))
+            else:
+                for prop, values in zip(properties, types):
+                    nested = values if isinstance(values, (list, tuple, set)) else [values]
+                    label_types.setdefault(str(prop), set()).update(map(str, nested))
+        required = {
+            "TextChunk": {"text": "FULLTEXT", "embedding": "VECTOR"},
+            "KnowledgeNode": {
+                "label": "FULLTEXT",
+                "text": "FULLTEXT",
+                "embedding": "VECTOR",
+            },
+        }
+        missing = [
+            f"{label}.{prop}:{kind}"
+            for label, properties in required.items()
+            for prop, kind in properties.items()
+            if kind not in actual.get(label, {}).get(prop, set())
+        ]
+        if missing:
+            raise AdapterError("retrieval indexes incomplete: " + ", ".join(missing))
+        return 4
+
+    def fulltext_search(
+        self, query: str, limit: int, source_ids: Sequence[str]
+    ) -> list[SearchCandidate]:
+        if not query.strip():
+            return []
+        values = {
+            "workspace_id": self.workspace_id,
+            "source_ids": list(source_ids),
+            "query": query,
+            "limit": limit,
+        }
+        candidates = self._search_candidates(
+            "CALL db.idx.fulltext.queryNodes('TextChunk', $query) YIELD node, score ",
+            "node.text",
+            "chunk",
+            values,
+        )
+        candidates += self._search_candidates(
+            "CALL db.idx.fulltext.queryNodes('KnowledgeNode', $query) YIELD node, score ",
+            "coalesce(node.embedding_text, node.text, node.label)",
+            "node",
+            values,
+        )
+        return sorted(candidates, key=lambda item: (-item.score, item.id))[:limit]
+
+    def vector_search(
+        self, embedding: Sequence[float], limit: int, source_ids: Sequence[str]
+    ) -> list[SearchCandidate]:
+        values = {
+            "workspace_id": self.workspace_id,
+            "source_ids": list(source_ids),
+            "embedding": list(map(float, embedding)),
+            "limit": limit,
+        }
+        candidates = self._search_candidates(
+            "CALL db.idx.vector.queryNodes('TextChunk', 'embedding', $limit, "
+            "vecf32($embedding)) YIELD node, score ",
+            "node.text",
+            "chunk",
+            values,
+        )
+        candidates += self._search_candidates(
+            "CALL db.idx.vector.queryNodes('KnowledgeNode', 'embedding', $limit, "
+            "vecf32($embedding)) YIELD node, score ",
+            "coalesce(node.embedding_text, node.text, node.label)",
+            "node",
+            values,
+        )
+        return sorted(candidates, key=lambda item: (-item.score, item.id))[:limit]
+
+    def _search_candidates(
+        self,
+        procedure: str,
+        text_expression: str,
+        record_type: str,
+        params: Mapping[str, object],
+    ) -> list[SearchCandidate]:
+        query = (
+            procedure
+            + "WHERE node.workspace_id = $workspace_id AND coalesce(node.active, true) = true "
+            "AND (size($source_ids) = 0 OR node.source_id IN $source_ids) "
+            f"RETURN node.id, node.source_id, {text_expression}, "
+            f"node.source_location, score, '{record_type}' LIMIT $limit"
+        )
+        rows = self._admin_query(query, params)
+        return [
+            SearchCandidate(
+                id=str(row[0]),
+                source_id=str(row[1]),
+                text=str(row[2] or ""),
+                source_location=str(row[3] or ""),
+                score=float(row[4]),
+                record_type=str(row[5]),
+            )
+            for row in rows
+        ]
+
+    def _admin_query(self, query: str, params: Mapping[str, object]) -> list[Any]:
+        scoped = dict(params)
+        scoped["workspace_id"] = self.workspace_id
+        result = self._run(
+            lambda: self.graph.query(query, params=scoped, timeout=self.timeout_ms)
+        )
+        return _rows(result)
         self._write(
             "MATCH (n {workspace_id: $workspace_id, source_id: $source_id, "
             "ingestion_version: $version}) "

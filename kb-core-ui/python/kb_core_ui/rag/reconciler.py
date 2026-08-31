@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
-from typing import Protocol
+from typing import Callable, Protocol
 
 from kb_core_ui.rag.contracts import GraphEnvelope
 from kb_core_ui.rag.workspaces import RUN_FAILED, RUN_SUCCEEDED, WorkspaceRegistry
@@ -72,9 +72,16 @@ def source_version(envelope: GraphEnvelope) -> str:
 
 
 class SourceReconciler:
-    def __init__(self, adapter: ReconcileAdapter, registry: WorkspaceRegistry):
+    def __init__(
+        self,
+        adapter: ReconcileAdapter,
+        registry: WorkspaceRegistry,
+        *,
+        stage_indexer: Callable[[GraphEnvelope, str], object] | None = None,
+    ):
         self.adapter = adapter
         self.registry = registry
+        self.stage_indexer = stage_indexer
 
     def reconcile(
         self,
@@ -114,6 +121,8 @@ class SourceReconciler:
                 raise ReconcileError(
                     f"staged record counts differ: expected {expected!r}, got {actual!r}"
                 )
+            if self.stage_indexer is not None:
+                self.stage_indexer(envelope, version)
             self.adapter.publish_source_stage(
                 source_id, version, envelope.content_hash, envelope.extractor_version
             )

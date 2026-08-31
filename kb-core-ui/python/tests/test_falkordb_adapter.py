@@ -24,11 +24,12 @@ class FakeGraph:
         self.writes: list[tuple[str, dict, int]] = []
         self.reads: list[tuple[str, dict, int]] = []
         self.read_results: list[list] = []
+        self.query_results: list[list] = []
         self.deleted = False
 
     def query(self, query, params=None, timeout=None):
         self.writes.append((query, dict(params or {}), timeout))
-        return FakeResult([])
+        return FakeResult(self.query_results.pop(0) if self.query_results else [])
 
     def ro_query(self, query, params=None, timeout=None):
         self.reads.append((query, dict(params or {}), timeout))
@@ -276,3 +277,77 @@ def test_publish_is_one_atomic_swap_and_recovery_is_source_owned() -> None:
         params["workspace_id"] == "alpha" and params["source_id"] == "repo"
         for _, params, _ in driver.graph.writes
     )
+
+
+def test_embedding_writes_target_exact_staged_version() -> None:
+    driver = FakeDriver()
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+    value = envelope()
+
+    adapter.write_embeddings(
+        value,
+        "version-next",
+        [{"id": chunk.id, "embedding": [1.0, 0.0]} for chunk in value.chunks],
+        [
+            {"id": node.id, "embedding": [0.0, 1.0], "embedding_text": node.label}
+            for node in value.nodes
+        ],
+    )
+
+    assert len(driver.graph.writes) == 2
+    assert all("ingestion_version: $version" in query for query, _, _ in driver.graph.writes)
+    assert all("vecf32(row.embedding)" in query for query, _, _ in driver.graph.writes)
+    assert all(params["version"] == "version-next" for _, params, _ in driver.graph.writes)
+
+
+def test_ensure_retrieval_indexes_creates_and_verifies_four_indexes() -> None:
+    driver = FakeDriver(graph_exists=True)
+    driver.graph.read_results = [[]]
+    driver.graph.query_results = [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [
+            ["TextChunk", ["text", "embedding"], {"text": ["FULLTEXT"], "embedding": ["VECTOR"]}, "OPERATIONAL"],
+            [
+                "KnowledgeNode",
+                ["label", "text", "embedding"],
+                {"label": ["FULLTEXT"], "text": ["FULLTEXT"], "embedding": ["VECTOR"]},
+                "OPERATIONAL",
+            ],
+        ],
+    ]
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    count = adapter.ensure_retrieval_indexes(3, "kb-core.retrieval.v1")
+
+    assert count == 4
+    queries = "\n".join(query for query, _, _ in driver.graph.writes)
+    assert "CREATE FULLTEXT INDEX FOR (n:TextChunk) ON (n.text)" in queries
+    assert "CREATE FULLTEXT INDEX FOR (n:KnowledgeNode) ON (n.label, n.text)" in queries
+    assert "CREATE VECTOR INDEX FOR (n:TextChunk) ON (n.embedding)" in queries
+    assert "dimension: 3" in queries
+    assert "MERGE (m:IndexManifest" in queries
+    assert "CALL db.indexes()" in queries
+
+
+def test_search_methods_parameterize_scope_and_return_candidates() -> None:
+    driver = FakeDriver(graph_exists=True)
+    driver.graph.query_results = [
+        [["chunk-a", "repo", "chunk text", "a.md", 4.0, "chunk"]],
+        [["node-a", "repo", "node text", "a.py", 3.0, "node"]],
+        [["chunk-a", "repo", "chunk text", "a.md", 0.9, "chunk"]],
+        [["node-a", "repo", "node text", "a.py", 0.8, "node"]],
+    ]
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    lexical = adapter.fulltext_search("graph", 5, ("repo",))
+    vector = adapter.vector_search([1.0, 0.0], 5, ("repo",))
+
+    assert [candidate.id for candidate in lexical] == ["chunk-a", "node-a"]
+    assert [candidate.id for candidate in vector] == ["chunk-a", "node-a"]
+    assert all(params["workspace_id"] == "alpha" for _, params, _ in driver.graph.writes)
+    assert all(params["source_ids"] == ["repo"] for _, params, _ in driver.graph.writes)
+    assert all("$workspace_id" in query and "$source_ids" in query for query, _, _ in driver.graph.writes)

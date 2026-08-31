@@ -24,7 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-rag = ["FalkorDB>=1.7,<2"]
+rag = ["FalkorDB>=1.7,<2", "langchain-falkordb>=0.2,<0.3"]
 
 [project.scripts]
 kb-core-ui = "kb_core_ui.__main__:main"
