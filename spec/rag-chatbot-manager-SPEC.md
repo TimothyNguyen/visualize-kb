@@ -93,7 +93,7 @@ V15. Metrics expose ingestion run state, files/chunks/nodes/edges, rejected reco
 |id|status|task|cites|
 |---|---|---|---|
 |T1|x|Freeze versioned normalized graph envelope and mapping from current KB Core `graph.json` (`links`/`edges`) to FalkorDB nodes, relationships, chunks, citations, and provenance.|V1,V2,V3,I.graph_json,I.extract|
-|T2|.|Define workspace/source/run persistence model, IDs, lifecycle, graph-name derivation, source ownership, status states, and config validation. Keep local default path unchanged.|C1,C3,C6,C12,V6,I.config|
+|T2|x|Define workspace/source/run persistence model, IDs, lifecycle, graph-name derivation, source ownership, status states, and config validation. Keep local default path unchanged.|C1,C3,C6,C12,V6,I.config|
 |T3|.|Add JSON normalizer + validator: schema version, deterministic IDs, source metadata, edge endpoint checks, size limits, rejection report, and golden fixtures for repo/docs/cross-repo inputs.|V1,V2,V3,V4|
 |T4|.|Build FalkorDB adapter with connection health, graph lifecycle, parameterized upsert/delete, read-only query mode, retries, timeouts, and local/Cloud configuration.|C3,C6,C8,C12,V4,V6,I.config|
 |T5|.|Implement idempotent source reconciler: manifest/hash check, transactional staging, source-owned stale deletion, retry convergence, publish marker, and rollback/recovery handling.|C4,C5,V4,V5|

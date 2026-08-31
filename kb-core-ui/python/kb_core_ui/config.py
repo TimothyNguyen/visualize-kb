@@ -34,5 +34,9 @@ def memory_db_path(repo_root: str) -> str:
     return str(Path(repo_root) / DB_DIR_NAME / "memory.db")
 
 
+def workspace_registry_path(repo_root: str) -> str:
+    return str(Path(repo_root) / DB_DIR_NAME / "workspaces.json")
+
+
 def ensure_db_dir(repo_root: str) -> None:
     (Path(repo_root) / DB_DIR_NAME).mkdir(parents=True, exist_ok=True)
