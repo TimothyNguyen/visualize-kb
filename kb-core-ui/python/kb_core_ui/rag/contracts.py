@@ -287,10 +287,21 @@ def from_kb_core_graph(
             )
 
     relationships: list[GraphRelationship] = []
-    for index, raw in enumerate(raw_edges):
+    for raw in raw_edges:
         raw_source = str(raw.get("source", ""))
         raw_target = str(raw.get("target", ""))
-        identity = f"{raw_source}|{raw.get('relation') or raw.get('kind') or 'RELATED_TO'}|{raw_target}|{index}"
+        identity = json.dumps(
+            {
+                "source": raw_source,
+                "target": raw_target,
+                "type": raw.get("relation") or raw.get("kind") or "RELATED_TO",
+                "source_location": raw.get("source_location", ""),
+                "properties": _properties(raw, _EDGE_FIELDS),
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         relationships.append(
             GraphRelationship(
                 id=stable_record_id("relationship", workspace_id, source_id, identity, extractor_version),

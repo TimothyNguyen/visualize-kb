@@ -14,6 +14,13 @@ from kb_core_ui.rag.contracts import (
     stable_record_id,
 )
 from kb_core_ui.rag.config import RagConfig
+from kb_core_ui.rag.normalizer import (
+    NormalizationError,
+    NormalizationLimits,
+    NormalizationResult,
+    RejectedRecord,
+    normalize_kb_core_graph,
+)
 from kb_core_ui.rag.workspaces import (
     RUN_CANCELLED,
     RUN_FAILED,
@@ -48,6 +55,11 @@ __all__ = [
     "from_kb_core_graph",
     "stable_record_id",
     "RagConfig",
+    "NormalizationError",
+    "NormalizationLimits",
+    "NormalizationResult",
+    "RejectedRecord",
+    "normalize_kb_core_graph",
     "RUN_CANCELLED",
     "RUN_FAILED",
     "RUN_QUEUED",

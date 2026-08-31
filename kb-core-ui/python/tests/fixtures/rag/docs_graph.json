@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "id": "architecture.md:Workspace",
+      "label": "Workspace",
+      "kind": "concept",
+      "source_location": "architecture.md#workspace",
+      "description": "Workspace groups repositories and documents.",
+      "_origin": "llm"
+    },
+    {
+      "id": "architecture.md:KnowledgeGraph",
+      "label": "Knowledge Graph",
+      "kind": "concept",
+      "source_location": "architecture.md#knowledge-graph",
+      "description": "Knowledge graph stores extracted relationships.",
+      "_origin": "llm"
+    }
+  ],
+  "edges": [
+    {
+      "source": "architecture.md:Workspace",
+      "target": "architecture.md:KnowledgeGraph",
+      "kind": "owns"
+    }
+  ]
+}

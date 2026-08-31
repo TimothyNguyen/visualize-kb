@@ -1,0 +1,32 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "nodes": [
+    {
+      "id": "src/api.py:Api",
+      "label": "Api",
+      "file_type": "code",
+      "source_file": "src/api.py",
+      "source_location": "L4",
+      "signature": "class Api",
+      "doc": "Serves workspace requests.",
+      "_origin": "ast"
+    },
+    {
+      "id": "src/store.py:Store",
+      "label": "Store",
+      "file_type": "code",
+      "source_file": "src/store.py",
+      "source_location": "L8",
+      "signature": "class Store",
+      "_origin": "ast"
+    }
+  ],
+  "links": [
+    {
+      "source": "src/api.py:Api",
+      "target": "src/store.py:Store",
+      "relation": "calls"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "repo": {
+    "schema_version": "kb-core.rag.v1",
+    "workspace_id": "platform",
+    "source_id": "api-repo",
+    "node_labels": [
+      "Api",
+      "Store"
+    ],
+    "relationship_types": [
+      "CALLS"
+    ],
+    "provenance": [
+      "EXTRACTED"
+    ],
+    "chunks": 2,
+    "citations": 2,
+    "rejected": []
+  },
+  "docs": {
+    "schema_version": "kb-core.rag.v1",
+    "workspace_id": "platform",
+    "source_id": "design-docs",
+    "node_labels": [
+      "Knowledge Graph",
+      "Workspace"
+    ],
+    "relationship_types": [
+      "OWNS"
+    ],
+    "provenance": [
+      "INFERRED"
+    ],
+    "chunks": 2,
+    "citations": 2,
+    "rejected": []
+  }
+}
