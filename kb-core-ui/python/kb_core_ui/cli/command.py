@@ -179,7 +179,10 @@ class Command:
     def _name_padding(self) -> int:
         # cobra reads the padding off the PARENT's widest child name, then
         # floors it at minNamePadding.
-        widest = max((len(c.name) for c in self.subcommands), default=0)
+        widest = max(
+            (len(c.name) for c in self.subcommands if not getattr(c, "hidden", False)),
+            default=0,
+        )
         return max(widest, _MIN_NAME_PADDING)
 
     def usage_string(self) -> str:
@@ -194,6 +197,8 @@ class Command:
             parts.append("")
             parts.append("Available Commands:")
             for c in sorted(self.subcommands, key=lambda x: x.name):
+                if getattr(c, "hidden", False):
+                    continue
                 parts.append(f"  {c.name.ljust(pad)} {c.short}")
 
         if self.flags:

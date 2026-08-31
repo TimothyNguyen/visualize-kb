@@ -30,6 +30,7 @@ from kb_core_ui.rag import (
     SourceDocument,
     SourceReconciler,
     WorkspaceRegistry,
+    WorkspaceManager,
 )
 
 from harness.rag_fakes import InMemoryDriver
@@ -44,6 +45,7 @@ REQUIRED_STAGES = (
     "refresh_retry_reconcile",
     "hybrid_retrieval",
     "scoped_read",
+    "workspace_management",
     "source_delete_isolation",
     "registry_reopen",
     "graph_cleanup",
@@ -169,6 +171,19 @@ class _CaptureFalkorGraph:
         if kwargs != {"include_source": True}:
             raise WorkflowFailure(f"unexpected FalkorDBGraph options: {kwargs!r}")
         self.documents.extend(documents)
+
+
+class _BorrowedAdapter:
+    """Let manager exercise adapter operations without owning harness connection."""
+
+    def __init__(self, adapter):
+        self.adapter = adapter
+
+    def __getattr__(self, name):
+        return getattr(self.adapter, name)
+
+    def close(self):
+        pass
 
 
 def execute_rag_workflow(
@@ -387,6 +402,36 @@ def execute_rag_workflow(
             )
         return {"node_count": count, "source_ids": source_ids}
 
+    def management_stage() -> dict[str, Any]:
+        assert adapter is not None
+        manager = WorkspaceManager(
+            registry,
+            _config(backend),
+            adapter_factory=lambda _workspace_id: _BorrowedAdapter(adapter),
+        )
+        health = manager.health(state["workspace"].id)
+        stats = manager.stats(state["workspace"].id)
+        context = manager.graph_context(
+            state["workspace"].id,
+            source_ids=[state["fixture"]["sources"][0]["id"]],
+            limit=2,
+        )
+        run = manager.start_ingestion(
+            state["workspace"].id, state["fixture"]["sources"][0]["id"]
+        )
+        cancelled = manager.cancel_ingestion(state["workspace"].id, run["id"])
+        if not health["connected"] or stats["nodes"] < 1 or not context["records"]:
+            raise WorkflowFailure("workspace management reads returned incomplete data")
+        if cancelled["status"] != "cancelled":
+            raise WorkflowFailure("workspace management cancellation did not persist")
+        return {
+            "connected": health["connected"],
+            "nodes": stats["nodes"],
+            "relationships": stats["relationships"],
+            "context_records": len(context["records"]),
+            "cancelled_run": run["id"],
+        }
+
     def delete_stage() -> dict[str, Any]:
         assert adapter is not None
         deleted_source = state["fixture"]["sources"][0]["id"]
@@ -429,6 +474,7 @@ def execute_rag_workflow(
         ("refresh_retry_reconcile", refresh_stage),
         ("hybrid_retrieval", hybrid_stage),
         ("scoped_read", read_stage),
+        ("workspace_management", management_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),
         ("graph_cleanup", cleanup_stage),

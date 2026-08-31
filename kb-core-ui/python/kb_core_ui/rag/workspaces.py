@@ -208,10 +208,21 @@ class WorkspaceRegistry:
 
     def mark_deleting(self, workspace_id: str) -> Workspace:
         workspace = self.get(workspace_id)
+        if any(run.status in {RUN_QUEUED, RUN_RUNNING} for run in workspace.runs.values()):
+            raise WorkspaceError("cannot delete workspace while ingestion is active")
         workspace.status = WORKSPACE_DELETING
         workspace.updated_at = _now()
         self._save()
         return workspace
+
+    def remove_workspace(self, workspace_id: str) -> None:
+        workspace = self.get(workspace_id)
+        if workspace.status != WORKSPACE_DELETING:
+            raise WorkspaceError(f"workspace {workspace_id!r} must be deleting before removal")
+        if any(run.status in {RUN_QUEUED, RUN_RUNNING} for run in workspace.runs.values()):
+            raise WorkspaceError("cannot delete workspace while ingestion is active")
+        del self.workspaces[workspace_id]
+        self._save()
 
     def add_source(
         self,
@@ -247,12 +258,25 @@ class WorkspaceRegistry:
 
     def mark_source_deleting(self, workspace_id: str, source_id: str) -> Source:
         source = self._source(workspace_id, source_id)
-        if source.status == SOURCE_INGESTING:
-            raise WorkspaceError("cannot delete source while ingestion is running")
+        workspace = self.get(workspace_id)
+        if any(
+            run.source_id == source_id and run.status in {RUN_QUEUED, RUN_RUNNING}
+            for run in workspace.runs.values()
+        ):
+            raise WorkspaceError("cannot delete source while ingestion is active")
         source.status = SOURCE_DELETING
         source.updated_at = _now()
         self._save()
         return source
+
+    def remove_source(self, workspace_id: str, source_id: str) -> None:
+        workspace = self.get(workspace_id)
+        source = self._source(workspace_id, source_id)
+        if source.status != SOURCE_DELETING:
+            raise WorkspaceError(f"source {source_id!r} must be deleting before removal")
+        del workspace.sources[source_id]
+        workspace.updated_at = _now()
+        self._save()
 
     def publish_source(
         self,
@@ -319,6 +343,12 @@ class WorkspaceRegistry:
         source.updated_at = now
         workspace.updated_at = now
         self._save()
+        return run
+
+    def get_run(self, workspace_id: str, run_id: str) -> IngestionRun:
+        run = self.get(workspace_id).runs.get(run_id)
+        if run is None:
+            raise WorkspaceError(f"run {run_id!r} does not exist in workspace {workspace_id!r}")
         return run
 
     def _source(self, workspace_id: str, source_id: str) -> Source:

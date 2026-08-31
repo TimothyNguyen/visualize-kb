@@ -19,6 +19,7 @@ from kb_core_ui.errors import KbError
 from kb_core_ui.memory import VALID_KINDS
 from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
+from kb_core_ui.rag import AdapterError, WorkspaceError
 from kb_core_ui.server.mux import Mux, clean_path
 from kb_core_ui.server.wire import (
     Request,
@@ -63,12 +64,14 @@ class Server:
         web_dir: str = "",
         runner: Runner | None = None,
         memory: MemoryStore | None = None,
+        workspace_manager: object | None = None,
     ) -> None:
         self.store = store
         self.repo_root = repo_root
         self.web_dir = web_dir
         self.runner = runner
         self.memory = memory
+        self.workspace_manager = workspace_manager
         self.mux = Mux()
         # Go's *sql.DB is a connection pool safe for concurrent use; a
         # sqlite3.Connection is not. Requests arrive on separate threads, so
@@ -100,6 +103,11 @@ class Server:
             self.mux.handle("GET /api/memory/search", self.handle_memory_search)
             self.mux.handle("POST /api/memory", self.handle_memory_add)
             self.mux.handle("DELETE /api/memory/", self.handle_memory_delete)
+
+        if self.workspace_manager is not None:
+            for method in ("GET", "POST", "DELETE"):
+                self.mux.handle(f"{method} /api/rag/workspaces", self.handle_rag_workspaces)
+                self.mux.handle(f"{method} /api/rag/workspaces/", self.handle_rag_workspaces)
 
         self.mux.handle("/", self.handle_root)
 
@@ -368,6 +376,82 @@ class Server:
             return write_error(404, "no memory with id " + entry_id)
         return write_json({"removed": True})
 
+    # ---- GraphRAG workspace management --------------------------------
+
+    def handle_rag_workspaces(self, req: Request) -> Response:
+        rest = _trim_prefix(req.path, "/api/rag/workspaces").strip("/")
+        parts = rest.split("/") if rest else []
+        manager = self.workspace_manager
+        try:
+            if not parts:
+                if req.method == "GET":
+                    return write_json(manager.list_workspaces())
+                if req.method == "POST":
+                    body = _json_object(req.body)
+                    return write_json(
+                        manager.create_workspace(
+                            _json_string(body, "id"), _json_string(body, "name")
+                        ),
+                        status=201,
+                    )
+            workspace_id = parts[0] if parts else ""
+            if len(parts) == 1 and req.method == "DELETE":
+                return write_json(manager.delete_workspace(workspace_id))
+            if len(parts) == 2 and parts[1] == "health" and req.method == "GET":
+                return write_json(manager.health(workspace_id))
+            if len(parts) == 2 and parts[1] == "stats" and req.method == "GET":
+                return write_json(manager.stats(workspace_id))
+            if len(parts) == 2 and parts[1] == "context" and req.method == "GET":
+                raw_limit = req.get_query("limit") or "50"
+                limit = _atoi(raw_limit)
+                if limit is None:
+                    raise WorkspaceError("context limit must be an integer")
+                return write_json(
+                    manager.graph_context(
+                        workspace_id,
+                        source_ids=req.query.get("source", []),
+                        limit=limit,
+                    )
+                )
+            if len(parts) == 2 and parts[1] == "sources" and req.method == "POST":
+                body = _json_object(req.body)
+                return write_json(
+                    manager.add_source(
+                        workspace_id,
+                        _json_string(body, "id"),
+                        _json_string(body, "kind"),
+                        _json_string(body, "uri"),
+                        _json_string(body, "ref"),
+                    ),
+                    status=201,
+                )
+            if len(parts) == 3 and parts[1] == "sources" and req.method == "DELETE":
+                return write_json(manager.remove_source(workspace_id, parts[2]))
+            if len(parts) == 4 and parts[1] == "sources" and req.method == "POST":
+                if parts[3] == "ingestions":
+                    return write_json(manager.start_ingestion(workspace_id, parts[2]), status=202)
+                if parts[3] == "refresh":
+                    return write_json(manager.refresh_source(workspace_id, parts[2]), status=202)
+            if len(parts) == 3 and parts[1] == "runs" and req.method == "GET":
+                return write_json(manager.get_run(workspace_id, parts[2]))
+            if (
+                len(parts) == 4
+                and parts[1] == "runs"
+                and parts[3] == "cancel"
+                and req.method == "POST"
+            ):
+                return write_json(manager.cancel_ingestion(workspace_id, parts[2]))
+        except WorkspaceError as exc:
+            status = 404 if "does not exist" in str(exc) else 400
+            return write_error(status, str(exc))
+        except (AdapterError, OSError) as exc:
+            return write_error(503, str(exc))
+        except KeyError as exc:
+            return write_error(404, f"resource not found: {exc.args[0]}")
+        except ValueError as exc:
+            return write_error(400, str(exc))
+        return write_error(404, "not found")
+
     # ---- static UI -----------------------------------------------------
 
     def handle_root(self, req: Request) -> Response:
@@ -435,6 +519,16 @@ def _json_string(body: dict, key: str) -> str:
     leave the zero value."""
     value = body.get(key)
     return value if isinstance(value, str) else ""
+
+
+def _json_object(raw: bytes) -> dict[str, Any]:
+    try:
+        value = jsonx.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise WorkspaceError("invalid JSON body") from None
+    if not isinstance(value, dict):
+        raise WorkspaceError("invalid JSON body")
+    return value
 
 
 def _with_cors(handler: Callable[[Request], Response], req: Request) -> Response:

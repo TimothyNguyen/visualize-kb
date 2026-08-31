@@ -8,6 +8,7 @@ the cli-surface baselines compare them byte for byte.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -25,6 +26,7 @@ from kb_core_ui.config import (
     ensure_db_dir,
     memory_db_path,
     resolve_repo_path,
+    workspace_registry_path,
 )
 from kb_core_ui.bots import Runner as BotRunner
 from kb_core_ui.errors import KbError
@@ -33,6 +35,13 @@ from kb_core_ui.mcp import Server as McpServer
 from kb_core_ui.mcp import serve_stdio
 from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
+from kb_core_ui.rag import (
+    AdapterError,
+    RagConfig,
+    WorkspaceError,
+    WorkspaceManager,
+    WorkspaceRegistry,
+)
 from kb_core_ui.server import Server, listen_and_serve
 from kb_core_ui.store import Store
 
@@ -448,7 +457,8 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
             cmd.printf(f"Memory unavailable ({exc}) — serving without the memory tab.\n")
             memory = None
 
-        srv = Server(store, repo_root, web_dir, runner, memory)
+        workspace_manager = _default_workspace_manager(repo_root)
+        srv = Server(store, repo_root, web_dir, runner, memory, workspace_manager)
         display_host = "localhost" if values["host"] in ("127.0.0.1", "localhost") else values["host"]
         url = f"http://{display_host}:{values['port']}"
         cmd.printf(f"kb-core-ui serving {url}\n")
@@ -661,18 +671,141 @@ def _run_help(cmd: Command, values: dict, args: list[str]) -> None:
         root.out.write(target.help_string())
 
 
-def build_root() -> Command:
+def _default_workspace_manager(repo_root: str) -> WorkspaceManager:
+    return WorkspaceManager(
+        WorkspaceRegistry(workspace_registry_path(repo_root)), RagConfig.from_env(os.environ)
+    )
+
+
+def _workspace_leaf(use, short, run, *, args=no_args, flags=()):
+    common = (Flag("repo", "string", ".", "repository root"),)
+
+    def guarded(cmd: Command, values: dict, positional: list[str]) -> None:
+        try:
+            manager = cmd.root._workspace_manager_factory(resolve_repo_path([values["repo"]]))
+            result = run(manager, values, positional)
+        except (WorkspaceError, AdapterError, OSError, ValueError) as exc:
+            raise KbError(str(exc)) from None
+        cmd.root.out.write(json.dumps(result, separators=(",", ":")) + "\n")
+
+    return Command(use=use, short=short, flags=(*flags, *common), args=args, run=guarded)
+
+
+def _new_workspace_cmd() -> Command:
+    workspace = Command(use="workspace", short="Manage GraphRAG workspaces and sources")
+    # Python-only extension; hidden keeps archived Go CLI parity baselines stable.
+    workspace.hidden = True
+    workspace.add(
+        _workspace_leaf(
+            "list", "List workspaces", lambda manager, _v, _a: manager.list_workspaces()
+        ),
+        _workspace_leaf(
+            "create <id>",
+            "Create workspace",
+            lambda manager, values, args: manager.create_workspace(args[0], values["name"]),
+            args=exact_args(1),
+            flags=(Flag("name", "string", "", "workspace display name"),),
+        ),
+        _workspace_leaf(
+            "delete <id>",
+            "Delete workspace and graph",
+            lambda manager, _v, args: manager.delete_workspace(args[0]),
+            args=exact_args(1),
+        ),
+        _workspace_leaf(
+            "run <workspace> <run>",
+            "Get ingestion run status",
+            lambda manager, _v, args: manager.get_run(args[0], args[1]),
+            args=exact_args(2),
+        ),
+        _workspace_leaf(
+            "health <workspace>",
+            "Check workspace graph health",
+            lambda manager, _v, args: manager.health(args[0]),
+            args=exact_args(1),
+        ),
+        _workspace_leaf(
+            "stats <workspace>",
+            "Get workspace graph statistics",
+            lambda manager, _v, args: manager.stats(args[0]),
+            args=exact_args(1),
+        ),
+        _workspace_leaf(
+            "context <workspace>",
+            "Read bounded workspace graph context",
+            lambda manager, values, args: manager.graph_context(
+                args[0],
+                source_ids=([values["source"]] if values["source"] else []),
+                limit=values["limit"],
+            ),
+            args=exact_args(1),
+            flags=(
+                Flag("source", "string", "", "optional source id"),
+                Flag("limit", "int", 50, "maximum records (1-200)"),
+            ),
+        ),
+    )
+    source = Command(use="source", short="Manage workspace sources")
+    source.add(
+        _workspace_leaf(
+            "add <workspace> <source>",
+            "Add source",
+            lambda manager, values, args: manager.add_source(
+                args[0], args[1], values["kind"], values["uri"], values["ref"]
+            ),
+            args=exact_args(2),
+            flags=(
+                Flag("kind", "string", "", "source kind"),
+                Flag("uri", "string", "", "source URI"),
+                Flag("ref", "string", "", "source revision"),
+            ),
+        ),
+        _workspace_leaf(
+            "remove <workspace> <source>",
+            "Remove source and graph records",
+            lambda manager, _v, args: manager.remove_source(args[0], args[1]),
+            args=exact_args(2),
+        ),
+        _workspace_leaf(
+            "refresh <workspace> <source>",
+            "Queue source refresh",
+            lambda manager, _v, args: manager.refresh_source(args[0], args[1]),
+            args=exact_args(2),
+        ),
+    )
+    ingestion = Command(use="ingestion", short="Control ingestion runs")
+    ingestion.add(
+        _workspace_leaf(
+            "start <workspace> <source>",
+            "Queue ingestion",
+            lambda manager, _v, args: manager.start_ingestion(args[0], args[1]),
+            args=exact_args(2),
+        ),
+        _workspace_leaf(
+            "cancel <workspace> <run>",
+            "Cancel ingestion",
+            lambda manager, _v, args: manager.cancel_ingestion(args[0], args[1]),
+            args=exact_args(2),
+        ),
+    )
+    workspace.add(source, ingestion)
+    return workspace
+
+
+def build_root(workspace_manager_factory=None) -> Command:
     root = Command(
         use="kb-core-ui",
         short="AI Code Knowledge Graph & Visual Debugger",
         long=ROOT_LONG,
     )
+    root._workspace_manager_factory = workspace_manager_factory or _default_workspace_manager
     root.add(
         _new_parse_cmd(),
         _new_serve_cmd(),
         _new_mcp_cmd(),
         _new_bot_cmd(),
         _new_memory_cmd(),
+        _new_workspace_cmd(),
         _new_completion_cmd(),
         Command(use="help [command]", short="Help about any command", run=_run_help),
     )

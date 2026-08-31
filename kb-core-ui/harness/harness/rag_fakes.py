@@ -232,6 +232,24 @@ class InMemoryGraph:
         if "count(n)" in query and "collect(DISTINCT n.source_id)" in query:
             matches = self._matches(self.nodes, values, active_only=True)
             return FakeResult([[len(matches), sorted({row["source_id"] for row in matches})]])
+        if "count(DISTINCT n)" in query and "count(DISTINCT r)" in query:
+            nodes = self._matches(self.nodes, values, active_only=True)
+            relationships = self._matches(self.relationships, values, active_only=True)
+            return FakeResult(
+                [[len(nodes), len(relationships), sorted({row["source_id"] for row in nodes})]]
+            )
+        if "RETURN n.source_identity, n.label, n.node_type, n.source_id, n.text" in query:
+            source_ids = set(values.get("source_ids", []))
+            nodes = self._matches(self.nodes, values, active_only=True)
+            if source_ids:
+                nodes = [row for row in nodes if row["source_id"] in source_ids]
+            nodes.sort(key=lambda row: (row["source_id"], row["source_identity"]))
+            return FakeResult(
+                [
+                    [row["source_identity"], row["label"], row["node_type"], row["source_id"], row["text"]]
+                    for row in nodes[: int(values["limit"])]
+                ]
+            )
         raise RuntimeError(f"fake does not implement read query: {query}")
 
     @staticmethod

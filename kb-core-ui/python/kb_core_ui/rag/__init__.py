@@ -63,6 +63,7 @@ from kb_core_ui.rag.reconciler import (
     StageCounts,
     source_version,
 )
+from kb_core_ui.rag.manager import WorkspaceManager
 from kb_core_ui.rag.workspaces import (
     RUN_CANCELLED,
     RUN_FAILED,
@@ -136,6 +137,7 @@ __all__ = [
     "SourceReconciler",
     "StageCounts",
     "source_version",
+    "WorkspaceManager",
     "RUN_CANCELLED",
     "RUN_FAILED",
     "RUN_QUEUED",
