@@ -2,13 +2,15 @@
 
 ## §G
 
-G1. Turn KB Core graph JSON plus document corpora into workspace-scoped FalkorDB knowledge graphs, then answer repo, docs, and cross-repo questions in existing React UI through a stateful GraphRAG chatbot.
+G1. Hackathon MVP: turn internal KB Core graph JSON plus document corpora into workspace-scoped FalkorDB knowledge graphs, then answer repo, docs, and cross-repo questions in existing React UI through a CopilotKit-backed GraphRAG chatbot.
 
-G2. Keep current local graph explorer working without FalkorDB. GraphRAG is opt-in backend capability; no browser talks to FalkorDB directly.
+G2. Internal-use only. Keep current local graph explorer working without FalkorDB. GraphRAG is opt-in backend capability; no browser talks to FalkorDB or model providers directly.
+
+Hackathon boundary: optimize for one trusted internal team, local/private infrastructure, deterministic demo data, and working repo/document questions. Public SaaS, external tenants, hosted CopilotKit/FalkorDB control planes, enterprise compliance evidence, and production SLOs are post-hackathon.
 
 ## §C
 
-C1. Sources: local repo, GitHub repo URL + branch/commit, uploaded document set, document URL, or many sources combined in one workspace.
+C1. Sources: local internal repo, uploaded internal document set, or many internal sources combined in one workspace. GitHub URL, branch/commit fetch, and document URL are post-hackathon.
 
 C2. Repo source starts from KB Core `graph.json`; document source uses GraphRAG-SDK-compatible extraction into the same normalized graph envelope.
 
@@ -28,9 +30,9 @@ C9. Chat answer includes source citations and retrieval metadata. Unsupported cl
 
 C10. Existing `graph.json`, graph REST/MCP routes, SQLite stores, and current Graph/Bots/Memory UI flows remain backward compatible.
 
-C11. `@falkordb/ui-chat` is presentation layer only. Backend owns workspace scope, retrieval, authorization boundary, citations, persistence, and stream protocol.
+C11. CopilotKit is presentation/runtime integration only. Backend owns workspace scope, retrieval, authorization boundary, citations, persistence, and stream protocol. CopilotKit telemetry is disabled; hosted CopilotKit control plane is out of scope.
 
-C12. FalkorDB Cloud and local Docker use same adapter/config contract. Missing FalkorDB or LLM config fails RAG health checks clearly; base graph UI still starts.
+C12. Local Docker or approved internal FalkorDB use same adapter/config contract. Missing FalkorDB or approved model config fails RAG health checks clearly; base graph UI still starts.
 
 ## §I
 
@@ -52,9 +54,9 @@ I.falkor. `https://github.com/fatemenajafi135/GraphRAG` — reference service sh
 
 I.falkor_blog. `https://www.falkordb.com/blog/graphrag-langchain-langgrap/` — reference integration: `langchain-falkordb`, `FalkorDBGraph`, `FalkorDBVector` hybrid search, LangGraph routing/checkpoints, read-only Cypher safeguards.
 
-I.falkor_ui. `https://github.com/FalkorDB/falkordb-ui` — reference UI package: `@falkordb/ui-chat`, `onQuery`, streaming, suggestions, sources, `explainGraph`, `sourceMap`, strategy picker, feedback.
+I.copilotkit. `https://docs.copilotkit.ai/` — approved internal frontend/runtime candidate: React chat, AG-UI streaming, self-hosted runtime, agent tools, threads, and state.
 
-I.config. `FALKORDB_URL`, `FALKORDB_USERNAME`, `FALKORDB_PASSWORD`, `FALKORDB_SSL`, `RAG_LLM_PROVIDER`, `RAG_LLM_MODEL`, `RAG_EMBEDDING_MODEL`, `RAG_MAX_CONTEXT`, and `RAG_ENABLE` — server-only configuration; secrets never enter frontend bundle.
+I.config. `FALKORDB_URL`, `FALKORDB_USERNAME`, `FALKORDB_PASSWORD`, `FALKORDB_SSL`, `RAG_LLM_PROVIDER`, `RAG_LLM_MODEL`, `RAG_EMBEDDING_MODEL`, `RAG_MAX_CONTEXT`, `RAG_ENABLE`, and `COPILOTKIT_TELEMETRY_DISABLED` — server-only configuration; secrets never enter frontend bundle.
 
 I.harness. `kb-core-ui/harness/harness/rag_workflow.py`, `python -m harness rag`, and `.github/workflows/rag-harness.yml` — dynamic composition gate; fake backend always, pinned FalkorDB service when DB behavior changes.
 
@@ -106,15 +108,15 @@ V16. No task becomes `x` from isolated unit tests alone. Each task adds/updates 
 |T8|x|Add workspace CLI/API: list/create/delete workspace, add/remove/refresh sources, start/cancel ingestion, run status, health, stats, and bounded graph/subgraph context.|C1,C3,C5,V4,V6,V16,I.server,I.cli,I.harness|
 |T9|x|Build LangGraph RAG workflow: scope validation -> hybrid retrieval -> entity expansion -> safe read-only graph query -> evidence ranking -> answer/citations; add retry and empty-result branches.|C7,C8,C9,V7,V8,V16,I.falkor_blog,I.harness|
 |T10|x|Persist thread history/checkpoints with workspace-scoped FalkorDB saver or chat history adapter; define retention and cleanup; never persist provider secrets.|C3,C9,C11,V11,V16,I.falkor_blog,I.harness|
-|T11|x|Define REST + SSE contract for chat, suggestions, feedback, context, source map, graph explanation, errors, cancellation, and degraded mode. Add contract fixtures.|C9,C11,V9,V10,V16,I.server,I.client,I.falkor_ui,I.harness|
-|T12|.|Integrate `@falkordb/ui-chat`: custom element typings, `/chat` route, workspace selector, strategy options (`auto`, `local`, `multi_path`), suggestions, SSE accumulation, abort handling, feedback, sources, and entity/source click navigation.|C10,C11,V9,V10,V12,V16,I.client,I.routes,I.falkor_ui,I.harness|
-|T13|.|Add ingestion UI: source add form, repo branch/commit fields, document upload/URL, progress/state, rejection report, refresh/delete controls, and workspace graph stats.|C1,C5,V4,V5,V16,I.routes,I.client,I.harness|
+|T11|x|Define REST + SSE contract for chat, suggestions, feedback, context, source map, graph explanation, errors, cancellation, and degraded mode. Add contract fixtures.|C9,C11,V9,V10,V16,I.server,I.client,I.copilotkit,I.harness|
+|T12|~|Integrate CopilotKit with self-hosted runtime: `/chat` route, workspace selector, strategy options (`auto`, `local`, `multi_path`), suggestions, AG-UI/SSE accumulation, abort handling, feedback, sources, and entity/source click navigation. Disable telemetry; never use hosted CopilotKit control plane.|C10,C11,V9,V10,V12,V16,I.client,I.routes,I.copilotkit,I.harness|
+|T13|.|Add minimal internal ingestion UI and execution coordinator: local repo/document source form, progress/state, rejection report, refresh/delete controls, and workspace graph stats.|C1,C5,V4,V5,V16,I.routes,I.client,I.harness|
 |T14|.|Keep existing graph explorer compatible: selected workspace can open graph overview/subgraph, citation can focus symbol/file, static `graph.json` path still works with `RAG_ENABLE=false`.|C10,V12,V13,V16,I.graph_json,I.routes,I.harness|
-|T15|.|Add auth boundary hook and tenant policy interface before shared deployment: workspace authorization callback, server-side scope checks, CORS/origin policy, rate limits, body/upload limits, provider secret redaction, audit events.|C3,C6,C8,V6,V15,V16,I.server,I.harness|
-|T16|.|Add tests: normalizer goldens, duplicate/retry/delete reconciliation, cross-source and cross-repo retrieval, workspace isolation, Cypher validator, empty/degraded mode, SSE cancel, React chat behavior, and existing regression suite.|V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14,V16,I.harness|
+|T15|.|POST-HACKATHON: add shared-deployment auth/tenant policy, strict CORS/origin policy, rate limits, audit events, and formal provider-secret controls.|C3,C6,C8,V6,V15,V16,I.server,I.harness|
+|T16|.|Add only MVP tests: cross-source and cross-workspace isolation, Cypher rejection, empty/degraded mode, SSE/AG-UI cancel, citation mapping, React chat behavior, ingestion lifecycle, and existing regression suite.|V4,V5,V6,V7,V8,V9,V10,V12,V13,V14,V16,I.harness|
 |T17|.|Add Docker Compose dev stack with pinned FalkorDB version, seeded fixture workspace, mocked LLM mode, health checks, migration/reset docs, and optional provider setup.|C12,V14,V16,I.falkor_blog,I.config,I.harness|
-|T18|.|Add observability and performance gates: fixture budgets for ingestion, hybrid retrieval, graph expansion, first token, complete answer, memory growth, and concurrent workspace isolation. Record baseline before rollout.|V7,V14,V15,V16,I.harness|
-|T19|.|Document threat model, data flow, provider retention assumptions, prompt-injection handling, source trust labels, backup/restore, graph reset, upgrade, and rollback procedures.|C8,C9,V3,V6,V8,V15,V16,I.harness|
+|T18|.|POST-HACKATHON: add full observability, performance budgets, memory-growth tracking, and concurrent-workspace benchmarks.|V7,V14,V15,V16,I.harness|
+|T19|.|POST-HACKATHON: document full threat model, provider retention, backup/restore, upgrade/rollback, credential rotation, and incident procedures.|C8,C9,V3,V6,V8,V15,V16,I.harness|
 |T20|x|Build dynamic RAG harness and CI workflow. Replay T1-T4 as one workspace -> normalize -> validate -> FalkorDB upsert/read/delete scenario; emit JSON report; require fake and pinned-service modes.|V14,V16,I.harness,I.config|
 
 ## §B
@@ -122,4 +124,4 @@ V16. No task becomes `x` from isolated unit tests alone. Each task adds/updates 
 |id|date|cause|fix|
 |---|---|---|---|
 
-Recommended order: T1 -> T2 -> T3+T4 -> T20 -> T5+T6 -> T7 -> T8 -> T9+T10+T11 -> T12+T13+T14 -> T15+T16 -> T17+T18+T19.
+Recommended hackathon order: finish T12 -> T13 -> T14 -> MVP slice of T16 -> T17. Defer T15, T18, and T19 until internal demo proves product value.
