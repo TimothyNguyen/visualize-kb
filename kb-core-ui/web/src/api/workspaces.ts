@@ -60,6 +60,17 @@ export interface WorkspaceStats {
   source_ids: string[]
 }
 
+export interface FolderEntry {
+  name: string
+  path: string
+}
+
+export interface FolderLookup {
+  path: string
+  parent: string
+  directories: FolderEntry[]
+}
+
 async function workspaceRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${SERVICE_API_BASE}/rag/workspaces${path}`, init)
   if (!response.ok) {
@@ -79,6 +90,17 @@ function postJson(body?: unknown): RequestInit {
 
 export function listWorkspaces(): Promise<Workspace[]> {
   return workspaceRequest("")
+}
+
+export function lookupFolder(path = ""): Promise<FolderLookup> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : ""
+  return fetch(`${SERVICE_API_BASE}/folders${query}`).then(async (response) => {
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new ApiRequestError(response.status, body?.error || response.statusText)
+    }
+    return response.json() as Promise<FolderLookup>
+  })
 }
 
 export function createWorkspace(id: string, name: string): Promise<Workspace> {
@@ -172,4 +194,57 @@ export function getWorkspaceContext(
   if (options.focus) query.set("focus", options.focus)
   const suffix = query.size > 0 ? `?${query}` : ""
   return workspaceRequest(`/${encodeURIComponent(workspaceId)}/context${suffix}`)
+}
+
+export interface ChatMemoryEntry {
+  id: string
+  workspace_id: string
+  thread_id: string
+  turn_id: string
+  seq: number
+  title: string
+  text: string
+  source: string
+  created_at: string
+}
+
+export interface ChatMemoryHit {
+  entry: ChatMemoryEntry
+  score: number
+}
+
+function chatMemoryPath(workspaceId: string, threadId?: string): string {
+  const query = new URLSearchParams()
+  if (threadId) query.set("thread", threadId)
+  const suffix = query.size > 0 ? `?${query}` : ""
+  return `/${encodeURIComponent(workspaceId)}/memory${suffix}`
+}
+
+export async function listChatMemories(
+  workspaceId: string,
+  threadId?: string,
+): Promise<ChatMemoryEntry[]> {
+  const body = await workspaceRequest<{ entries: ChatMemoryEntry[] }>(
+    chatMemoryPath(workspaceId, threadId),
+  )
+  return body.entries ?? []
+}
+
+export async function searchChatMemories(
+  workspaceId: string,
+  query: string,
+  top = 5,
+): Promise<ChatMemoryHit[]> {
+  const params = new URLSearchParams({ q: query, top: String(top) })
+  const body = await workspaceRequest<{ hits: ChatMemoryHit[] }>(
+    `/${encodeURIComponent(workspaceId)}/memory/search?${params}`,
+  )
+  return body.hits ?? []
+}
+
+export async function deleteChatMemories(workspaceId: string, threadId?: string): Promise<number> {
+  const body = await workspaceRequest<{ deleted: number }>(chatMemoryPath(workspaceId, threadId), {
+    method: "DELETE",
+  })
+  return body.deleted ?? 0
 }

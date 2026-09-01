@@ -15,6 +15,7 @@ import {
   type WorkspaceStats,
 } from "../api/workspaces"
 import { citationRoute } from "../utils/workspaceGraph"
+import { readWorkspaceScope, writeWorkspaceScope } from "../utils/workspaceScope"
 import "./WorkspaceChatView.css"
 
 type AgentState = {
@@ -67,12 +68,16 @@ function WorkspaceChatWorkbench() {
       .then((items) => {
         if (!active) return
         setWorkspaces(items)
-        const opened = items[0]
+        const scope = readWorkspaceScope()
+        const opened = items.find((item) => item.id === scope.workspaceId) ?? items[0]
         if (!opened) return
         setWorkspaceId(opened.id)
         // Seed the scope so the checkboxes show the sources the agent is
         // actually allowed to read, rather than reading as an empty scope.
-        setAllowedSourceIds(Object.keys(opened.sources))
+        const available = Object.keys(opened.sources)
+        setAllowedSourceIds(scope.sourceIds.filter((id) => available.includes(id)).length > 0
+          ? scope.sourceIds.filter((id) => available.includes(id))
+          : available)
       })
       .catch((failure: unknown) => active && setError(errorMessage(failure)))
     return () => {
@@ -113,6 +118,7 @@ function WorkspaceChatWorkbench() {
     setStats(null)
     const next = workspaces.find((workspace) => workspace.id === id)
     setAllowedSourceIds(next ? Object.keys(next.sources) : [])
+    writeWorkspaceScope({ workspaceId: id, sourceIds: next ? Object.keys(next.sources) : [] })
     setError("")
   }
 
@@ -144,6 +150,7 @@ function WorkspaceChatWorkbench() {
       })
       await refresh()
       setAllowedSourceIds((current) => [...new Set([...current, sourceDraft.id.trim()])])
+      writeWorkspaceScope({ workspaceId, sourceIds: [...new Set([...allowedSourceIds, sourceDraft.id.trim()])] })
       setSourceDraft({ id: "", kind: sourceDraft.kind, uri: "" })
     } catch (failure) {
       setError(errorMessage(failure))
@@ -166,9 +173,11 @@ function WorkspaceChatWorkbench() {
   }
 
   function toggleSource(sourceId: string): void {
-    setAllowedSourceIds((current) =>
-      current.includes(sourceId) ? current.filter((id) => id !== sourceId) : [...current, sourceId],
-    )
+    setAllowedSourceIds((current) => {
+      const next = current.includes(sourceId) ? current.filter((id) => id !== sourceId) : [...current, sourceId]
+      writeWorkspaceScope({ workspaceId, sourceIds: next })
+      return next
+    })
   }
 
   return (
@@ -272,6 +281,9 @@ function WorkspaceChatWorkbench() {
           <div>
             <p className="eyebrow">Workspace analyst</p>
             <strong>{selected?.name ?? "No workspace selected"}</strong>
+            <small className="scope-indicator">
+              Scope: {allowedSourceIds.length === 0 ? "no sources" : allowedSourceIds.join(", ")}
+            </small>
           </div>
           <label>
             Retrieval

@@ -194,7 +194,7 @@ class Store:
                 (fg.file_path, content_hash, fg.language),
             )
             self.db.executemany(
-                f"INSERT INTO symbols ({_SYMBOL_COLUMNS}) "
+                f"INSERT OR REPLACE INTO symbols ({_SYMBOL_COLUMNS}) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (

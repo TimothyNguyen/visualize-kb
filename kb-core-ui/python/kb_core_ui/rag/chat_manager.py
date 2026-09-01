@@ -19,6 +19,7 @@ to keep in sync.
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -37,10 +38,16 @@ from kb_core_ui.rag.chat_contract import (
     TERMINAL_SSE_EVENTS,
     ChatManagerError,
 )
+from kb_core_ui.rag.chat_memory import ChatMemorySink, NullChatMemorySink
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.falkordb_adapter import AdapterError, FalkorDBAdapter
 from kb_core_ui.rag.indexing import EmbeddingProvider
-from kb_core_ui.rag.persistence import ChatHistoryStore, ChatThreadAdapter, validate_thread_id
+from kb_core_ui.rag.persistence import (
+    ChatHistoryStore,
+    ChatThreadAdapter,
+    PersistedTurn,
+    validate_thread_id,
+)
 from kb_core_ui.rag.workflow import (
     CANCELLED_TEXT,
     ChatModel,
@@ -197,6 +204,7 @@ class ChatManager:
         suggestion_pool: Sequence[str] = DEFAULT_SUGGESTIONS,
         max_cached_queries: int = 500,
         sleep: Callable[[float], None] = time.sleep,
+        chat_memory_sink: ChatMemorySink | None = None,
     ) -> None:
         if max_concurrent_streams < 1:
             raise ValueError("max_concurrent_streams must be positive")
@@ -231,7 +239,9 @@ class ChatManager:
         self.suggestion_pool = tuple(suggestion_pool)
         self.max_cached_queries = max_cached_queries
         self.sleep = sleep
+        self.chat_memory_sink = chat_memory_sink or NullChatMemorySink()
 
+        self._sink_errors: dict[str, list[str]] = {}
         self._lock = threading.Lock()
         self._active_query_ids: set[str] = set()
         self._cancelled_query_ids: set[str] = set()
@@ -241,6 +251,46 @@ class ChatManager:
         self._feedback: dict[str, list[dict[str, Any]]] = {}
 
     # -- shared plumbing --------------------------------------------------
+
+    def _record_memory(self, turn: PersistedTurn) -> None:
+        """Archive one turn. The sink already swallows store failures; this
+        guard is for a sink that is itself broken, because no archive problem
+        may turn an answered turn into a failed request."""
+
+        try:
+            self.chat_memory_sink.record(turn)
+        except Exception as exc:  # noqa: BLE001 - a sink must never break a turn
+            print(f"chat memory sink raised: {exc}", file=sys.stderr)
+            message = f"chat_memory: record failed ({exc.__class__.__name__})"
+            with self._lock:
+                self._sink_errors.setdefault(turn.workspace_id, []).append(message)
+
+    def _archive_delete(self, delete: Callable[[], int]) -> None:
+        """The graph-side delete has already happened by the time this runs, so
+        a broken sink must not report a completed delete as a failure. Matches
+        the guard WorkspaceManager.delete_workspace puts around the same call."""
+
+        try:
+            delete()
+        except Exception as exc:  # noqa: BLE001 - a sink must never break a delete
+            print(f"chat memory sink raised: {exc}", file=sys.stderr)
+
+    def _with_sink_errors(self, payload: dict[str, Any], workspace_id: str) -> dict[str, Any]:
+        """Append this workspace's archive failures to the wire payload's errors.
+
+        Scoped by workspace because these strings reach a browser, and one
+        tenant may not be shown a failure another tenant's turn caused.
+
+        Builds a new list rather than mutating in place: the list under
+        ``errors`` is the one the workflow's ChatResponse owns.
+        """
+
+        with self._lock:
+            drained = self._sink_errors.pop(workspace_id, [])
+        drained += list(self.chat_memory_sink.drain_errors(workspace_id))
+        if drained:
+            payload["errors"] = list(payload.get("errors", ())) + drained
+        return payload
 
     def check_body_size(self, body: bytes) -> None:
         if len(body) > self.max_body_bytes:
@@ -344,7 +394,10 @@ class ChatManager:
                     cancelled=False,
                 )
                 if thread_id:
-                    self.history_store_factory(adapter).write_turn(thread_id, query, response)
+                    turn = self.history_store_factory(adapter).write_turn(
+                        thread_id, query, response
+                    )
+                    self._record_memory(turn)
                 return response
 
             response = self._with_adapter(workspace_id, operation)
@@ -352,7 +405,9 @@ class ChatManager:
             with self._lock:
                 self._active_query_ids.discard(qid)
 
-        payload = chat_contract_payload(response.to_json_dict())
+        payload = self._with_sink_errors(
+            chat_contract_payload(response.to_json_dict()), workspace_id
+        )
         self._cache_query(qid, workspace_id, payload)
         return payload
 
@@ -437,9 +492,10 @@ class ChatManager:
                             and not self._is_cancelled(qid)
                             and response.answer != CANCELLED_TEXT
                         ):
-                            self.history_store_factory(adapter).write_turn(
+                            turn = self.history_store_factory(adapter).write_turn(
                                 thread_id, query, response
                             )
+                            self._record_memory(turn)
                         return response
 
                     response = self._with_adapter(workspace_id, operation)
@@ -472,7 +528,9 @@ class ChatManager:
                 # disconnect after this point can never lose a completed
                 # turn, and nothing before this point can ever be mistaken
                 # for a complete one.
-                payload = chat_contract_payload(response.to_json_dict())
+                payload = self._with_sink_errors(
+                    chat_contract_payload(response.to_json_dict()), workspace_id
+                )
                 self._cache_query(qid, workspace_id, payload)
                 yield SSE_EVENT_COMPLETED, payload
             finally:
@@ -591,6 +649,7 @@ class ChatManager:
             workspace_id,
             lambda adapter: self.history_store_factory(adapter).delete_thread(thread_id),
         )
+        self._archive_delete(lambda: self.chat_memory_sink.delete_thread(workspace_id, thread_id))
         return {"workspace_id": workspace_id, "thread_id": thread_id, "deleted": True}
 
     def delete_all_threads(self, workspace_id: str) -> dict[str, Any]:
@@ -599,4 +658,5 @@ class ChatManager:
             workspace_id,
             lambda adapter: self.history_store_factory(adapter).cleanup_workspace(),
         )
+        self._archive_delete(lambda: self.chat_memory_sink.delete_workspace(workspace_id))
         return {"workspace_id": workspace_id, "deleted_threads": removed}

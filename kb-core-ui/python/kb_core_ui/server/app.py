@@ -10,6 +10,7 @@ from __future__ import annotations
 import mimetypes
 import os
 import threading
+from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from kb_core_ui import jsonx
@@ -72,6 +73,8 @@ class Server:
         memory: MemoryStore | None = None,
         workspace_manager: object | None = None,
         chat_manager: object | None = None,
+        chat_memory: object | None = None,
+        chat_memory_sink: object | None = None,
     ) -> None:
         self.store = store
         self.repo_root = repo_root
@@ -80,6 +83,11 @@ class Server:
         self.memory = memory
         self.workspace_manager = workspace_manager
         self.chat_manager = chat_manager
+        self.chat_memory = chat_memory
+        self.chat_memory_sink = chat_memory_sink
+        configured_roots = os.environ.get("KB_ALLOWED_FOLDER_ROOTS", "")
+        roots = [repo_root, *(item.strip() for item in configured_roots.split(os.pathsep) if item.strip())]
+        self.folder_roots = tuple(Path(root).resolve() for root in roots)
         self.mux = Mux()
         # Go's *sql.DB is a connection pool safe for concurrent use; a
         # sqlite3.Connection is not. Requests arrive on separate threads, so
@@ -96,6 +104,7 @@ class Server:
         self.mux.handle("GET /api/graph/subgraph", self.handle_subgraph)
         self.mux.handle("GET /api/search", self.handle_search)
         self.mux.handle("GET /api/source", self.handle_source)
+        self.mux.handle("GET /api/folders", self.handle_folders)
         self.mux.handle("GET /api/stats", self.handle_stats)
         self.mux.handle("GET /api/files/", self.handle_file_symbols)
         self.mux.handle("GET /api/symbols/", self.handle_symbols)
@@ -251,6 +260,35 @@ class Server:
         return write_json(
             {"filePath": file, "lines": all_lines[start - 1 : end], "startLine": start}
         )
+
+    def handle_folders(self, req: Request) -> Response:
+        """List local folders the UI may use as ingestion sources.
+
+        Folder lookup is intentionally server-side: browsers cannot expose a
+        reliable absolute path to a local directory picker.
+        """
+        requested = req.get_query("path") or str(self.folder_roots[0])
+        folder = Path(requested).expanduser().resolve()
+        try:
+            allowed = any(os.path.commonpath((str(folder), str(root))) == str(root) for root in self.folder_roots)
+        except ValueError:
+            allowed = False
+        if not allowed:
+            return write_error(400, "folder is outside allowed roots")
+        if not folder.is_dir():
+            return write_error(404, "folder not found: " + requested)
+        try:
+            directories = sorted(
+                ({"name": child.name, "path": str(child)} for child in folder.iterdir() if child.is_dir()),
+                key=lambda item: item["name"].lower(),
+            )
+        except OSError as exc:
+            return write_error(403, "cannot list folder: " + str(exc))
+        return write_json({
+            "path": str(folder),
+            "parent": str(folder.parent) if folder.parent != folder else str(folder),
+            "directories": directories,
+        })
 
     def handle_stats(self, req: Request) -> Response:
         try:
@@ -464,6 +502,8 @@ class Server:
                 return write_json(manager.cancel_ingestion(workspace_id, parts[2]))
             if len(parts) >= 2 and parts[1] == "chat":
                 return self._handle_chat(req, workspace_id, parts[2:])
+            if len(parts) >= 2 and parts[1] == "memory":
+                return self._handle_chat_memory(req, workspace_id, parts[2:])
         except ChatManagerError as exc:
             return write_error(exc.status, str(exc))
         except WorkspaceError as exc:
@@ -574,6 +614,55 @@ class Server:
                 return write_json(chat.list_thread(workspace_id, sub[1]))
             if len(sub) == 2 and req.method == "DELETE":
                 return write_json(chat.delete_thread(workspace_id, sub[1]))
+
+        return write_error(404, "not found")
+
+    # ---- GraphRAG chat archive -----------------------------------------
+
+    def _handle_chat_memory(self, req: Request, workspace_id: str, sub: list[str]) -> Response:
+        """``sub`` is the path after ``/api/rag/workspaces/{id}/memory``.
+
+        Every branch passes ``workspace_id`` to the store, which scopes its own
+        SQL by it -- the archive is never queried across a workspace boundary.
+        """
+
+        memory = self.chat_memory
+        if memory is None:
+            return write_error(404, "not found")
+        # An unknown workspace must not read as an empty archive. The raised
+        # WorkspaceError becomes a 404 in the caller's exception mapping.
+        self.workspace_manager.registry.get(workspace_id)
+        leaf = sub[0] if sub else ""
+
+        if leaf == "" and req.method == "GET":
+            entries = memory.list(workspace_id, req.get_query("thread"))
+            return write_json(
+                {
+                    "workspace_id": workspace_id,
+                    "entries": [entry.to_json_dict() for entry in entries],
+                }
+            )
+
+        if leaf == "" and req.method == "DELETE":
+            # Through the sink when there is one, so this delete queues behind
+            # archive writes that have not landed yet. Deleting on the store
+            # directly would step over that queue and let a pending write
+            # resurrect the rows the caller just asked to remove. With no sink
+            # there is no queue, and the store is the only thing to talk to.
+            target = self.chat_memory_sink or memory
+            thread_id = req.get_query("thread")
+            if thread_id:
+                deleted = target.delete_thread(workspace_id, thread_id)
+            else:
+                deleted = target.delete_workspace(workspace_id)
+            return write_json({"workspace_id": workspace_id, "deleted": deleted})
+
+        if leaf == "search" and req.method == "GET":
+            top = _atoi(req.get_query("top") or "") or 5
+            hits = memory.search(workspace_id, req.get_query("q"), top)
+            return write_json(
+                {"workspace_id": workspace_id, "hits": [hit.to_json_dict() for hit in hits]}
+            )
 
         return write_error(404, "not found")
 
