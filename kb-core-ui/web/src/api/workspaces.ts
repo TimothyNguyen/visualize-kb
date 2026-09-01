@@ -173,3 +173,56 @@ export function getWorkspaceContext(
   const suffix = query.size > 0 ? `?${query}` : ""
   return workspaceRequest(`/${encodeURIComponent(workspaceId)}/context${suffix}`)
 }
+
+export interface ChatMemoryEntry {
+  id: string
+  workspace_id: string
+  thread_id: string
+  turn_id: string
+  seq: number
+  title: string
+  text: string
+  source: string
+  created_at: string
+}
+
+export interface ChatMemoryHit {
+  entry: ChatMemoryEntry
+  score: number
+}
+
+function chatMemoryPath(workspaceId: string, threadId?: string): string {
+  const query = new URLSearchParams()
+  if (threadId) query.set("thread", threadId)
+  const suffix = query.size > 0 ? `?${query}` : ""
+  return `/${encodeURIComponent(workspaceId)}/memory${suffix}`
+}
+
+export async function listChatMemories(
+  workspaceId: string,
+  threadId?: string,
+): Promise<ChatMemoryEntry[]> {
+  const body = await workspaceRequest<{ entries: ChatMemoryEntry[] }>(
+    chatMemoryPath(workspaceId, threadId),
+  )
+  return body.entries ?? []
+}
+
+export async function searchChatMemories(
+  workspaceId: string,
+  query: string,
+  top = 5,
+): Promise<ChatMemoryHit[]> {
+  const params = new URLSearchParams({ q: query, top: String(top) })
+  const body = await workspaceRequest<{ hits: ChatMemoryHit[] }>(
+    `/${encodeURIComponent(workspaceId)}/memory/search?${params}`,
+  )
+  return body.hits ?? []
+}
+
+export async function deleteChatMemories(workspaceId: string, threadId?: string): Promise<number> {
+  const body = await workspaceRequest<{ deleted: number }>(chatMemoryPath(workspaceId, threadId), {
+    method: "DELETE",
+  })
+  return body.deleted ?? 0
+}
