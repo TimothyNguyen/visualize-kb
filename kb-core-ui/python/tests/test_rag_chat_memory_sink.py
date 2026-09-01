@@ -305,6 +305,26 @@ def test_a_full_queue_never_drops_a_delete(store):
     assert store.count("alpha") == 0
 
 
+def test_closing_a_full_queue_does_not_hang_the_caller(store):
+    """Shutdown runs on the thread that owns the process. A worker stalled on a
+    slow archive write must not be able to hold that thread forever."""
+
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(store), maxsize=1, timeout=0.2)
+    entered, release = _stall(store)
+    try:
+        sink.record(_turn(turn_id="a1"))
+        _until(entered.is_set)
+        sink.record(_turn(turn_id="a2"))
+        _until(lambda: sink._queue.qsize() == 1)
+
+        started = time.monotonic()
+        sink.close()
+
+        assert time.monotonic() - started < 2
+    finally:
+        release.set()
+
+
 def test_closing_twice_is_safe(store):
     sink = ThreadedChatMemorySink(SyncChatMemorySink(store))
     sink.close()

@@ -247,6 +247,12 @@ class ThreadedChatMemorySink:
     def close(self) -> None:
         if self._closed:
             return
+        # Set before queuing the sentinel so nothing new gets in behind it.
         self._closed = True
-        self._queue.put(None)
+        try:
+            self._queue.put(None, timeout=self._timeout)
+        except queue.Full:
+            # A worker stalled on a slow archive write must not stall shutdown.
+            # It is a daemon thread, so it goes away with the process.
+            return
         self._thread.join(timeout=self._timeout)
