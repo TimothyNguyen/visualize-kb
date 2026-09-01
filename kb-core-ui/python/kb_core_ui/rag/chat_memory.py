@@ -193,19 +193,25 @@ class ThreadedChatMemorySink:
             return
         try:
             self._queue.put_nowait(item)
+            return
         except queue.Full:
-            try:
-                dropped = self._queue.get_nowait()
-                dropped.done.set()
-                self._queue.task_done()
-                self._inner.note_error("queue full, dropped the oldest pending write")
-            except queue.Empty:
-                pass
-            try:
-                self._queue.put_nowait(item)
-            except queue.Full:
-                item.done.set()
-                self._inner.note_error("queue full, dropped a write")
+            pass
+
+        # Only a write is expendable. Dropping one loses a turn from the
+        # archive; dropping a delete leaves rows the caller asked to remove and
+        # releases that caller as though it had worked. Nothing already queued
+        # is discarded either, because reordering the queue would let a write
+        # outlive the delete behind it.
+        if isinstance(item, _Record):
+            item.done.set()
+            self._inner.note_error("queue full, dropped a write")
+            return
+
+        try:
+            self._queue.put(item, timeout=self._timeout)
+        except queue.Full:
+            item.done.set()
+            self._inner.note_error("queue full, gave up waiting to delete")
 
     def record(self, turn: "PersistedTurn") -> None:
         self._submit(_Record(turn=turn))

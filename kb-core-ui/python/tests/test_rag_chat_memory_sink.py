@@ -6,6 +6,9 @@ proving that a broken store degrades the response instead of breaking it.
 
 from __future__ import annotations
 
+import threading
+import time
+
 import pytest
 
 from kb_core_ui.memory import ChatMemoryStore
@@ -45,6 +48,15 @@ def _turn(response=None, turn_id="turn-1", thread_id="t1", seq=1, query="a quest
         response=response if response is not None else _response(),
         created_at="2026-08-31T00:00:00Z",
     )
+
+
+def _until(predicate, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    raise AssertionError("condition never became true")
 
 
 @pytest.fixture()
@@ -209,7 +221,7 @@ def test_store_errors_from_the_worker_surface_on_a_later_drain(store):
     assert any(error.startswith("chat_memory:") for error in errors)
 
 
-def test_a_full_queue_drops_the_oldest_and_says_so(store):
+def test_a_full_queue_drops_a_write_and_says_so(store):
     sink = ThreadedChatMemorySink(SyncChatMemorySink(store), maxsize=1)
     sink.pause()
     try:
@@ -222,6 +234,30 @@ def test_a_full_queue_drops_the_oldest_and_says_so(store):
 
     assert any("dropped" in error for error in sink.drain_errors())
     assert store.count("alpha") <= 2
+
+
+def test_a_full_queue_never_drops_a_delete(store):
+    """A dropped write loses a turn from the archive. A dropped delete leaves
+    rows the caller asked to remove, and releases the caller as if it had
+    worked -- so writes are expendable under pressure and deletes are not."""
+
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(store), maxsize=1)
+    sink.pause()
+    deleter = threading.Thread(target=lambda: sink.delete_thread("alpha", "t1"))
+    try:
+        # The first record is taken off the queue immediately and blocks on the
+        # paused worker, so the delete behind it is what fills the queue.
+        sink.record(_turn(turn_id="a1"))
+        deleter.start()
+        _until(lambda: sink._queue.qsize() == 1)
+        for index in range(5):
+            sink.record(_turn(turn_id=f"flood-{index}"))
+    finally:
+        sink.resume()
+        deleter.join(timeout=5)
+        sink.close()
+
+    assert store.count("alpha") == 0
 
 
 def test_closing_twice_is_safe(store):
