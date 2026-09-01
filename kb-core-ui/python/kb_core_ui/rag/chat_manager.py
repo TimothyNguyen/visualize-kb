@@ -260,6 +260,16 @@ class ChatManager:
             with self._lock:
                 self._sink_errors.setdefault(turn.workspace_id, []).append(message)
 
+    def _archive_delete(self, delete: Callable[[], Any]) -> None:
+        """The graph-side delete has already happened by the time this runs, so
+        a broken sink must not report a completed delete as a failure. Matches
+        the guard WorkspaceManager.delete_workspace puts around the same call."""
+
+        try:
+            delete()
+        except Exception as exc:  # noqa: BLE001 - a sink must never break a delete
+            print(f"chat memory sink raised: {exc}", file=sys.stderr)
+
     def _with_sink_errors(self, payload: dict[str, Any], workspace_id: str) -> dict[str, Any]:
         """Append this workspace's archive failures to the wire payload's errors.
 
@@ -634,7 +644,7 @@ class ChatManager:
             workspace_id,
             lambda adapter: self.history_store_factory(adapter).delete_thread(thread_id),
         )
-        self.chat_memory_sink.delete_thread(workspace_id, thread_id)
+        self._archive_delete(lambda: self.chat_memory_sink.delete_thread(workspace_id, thread_id))
         return {"workspace_id": workspace_id, "thread_id": thread_id, "deleted": True}
 
     def delete_all_threads(self, workspace_id: str) -> dict[str, Any]:
@@ -643,5 +653,5 @@ class ChatManager:
             workspace_id,
             lambda adapter: self.history_store_factory(adapter).cleanup_workspace(),
         )
-        self.chat_memory_sink.delete_workspace(workspace_id)
+        self._archive_delete(lambda: self.chat_memory_sink.delete_workspace(workspace_id))
         return {"workspace_id": workspace_id, "deleted_threads": removed}

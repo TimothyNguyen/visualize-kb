@@ -479,6 +479,12 @@ class _ExplodingSink(_RecordingSink):
             return
         raise RuntimeError("sink is broken")
 
+    def delete_thread(self, workspace_id, thread_id):
+        raise RuntimeError("sink is broken")
+
+    def delete_workspace(self, workspace_id):
+        raise RuntimeError("sink is broken")
+
 
 def test_asking_on_a_thread_archives_the_turn(tmp_path):
     sink = _RecordingSink()
@@ -589,6 +595,17 @@ def test_deleting_a_thread_and_a_workspace_reaches_the_sink(tmp_path):
 
     assert sink.deleted_threads == [("alpha", "t1")]
     assert sink.deleted_workspaces == ["alpha"]
+
+
+def test_a_raising_sink_does_not_fail_a_delete(tmp_path):
+    """The graph-side delete has already happened by the time the sink is
+    called. Raising here would report a completed delete as a failure."""
+
+    manager = _manager(tmp_path, chat_memory_sink=_ExplodingSink())
+    manager.ask("alpha", query="hello", thread_id="t1")
+
+    assert manager.delete_thread("alpha", "t1")["deleted"] is True
+    assert manager.delete_all_threads("alpha")["workspace_id"] == "alpha"
 
 
 def test_a_manager_without_a_sink_still_answers(tmp_path):
