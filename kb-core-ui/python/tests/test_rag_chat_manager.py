@@ -430,3 +430,134 @@ def test_delete_all_threads_scoped_to_workspace(tmp_path):
         manager.list_thread("alpha", "t1")
     # beta's identically-named thread is untouched.
     assert manager.list_thread("beta", "t1")["turns"]
+
+
+# --------------------------------------------------------------------------- #
+# chat memory sink -- the archive is best-effort and never fails a turn
+# --------------------------------------------------------------------------- #
+
+
+class _RecordingSink:
+    def __init__(self):
+        self.recorded = []
+        self.deleted_threads = []
+        self.deleted_workspaces = []
+        self.errors = []
+
+    def record(self, turn):
+        self.recorded.append(turn)
+
+    def delete_thread(self, workspace_id, thread_id):
+        self.deleted_threads.append((workspace_id, thread_id))
+
+    def delete_workspace(self, workspace_id):
+        self.deleted_workspaces.append(workspace_id)
+
+    def drain_errors(self):
+        drained, self.errors = self.errors, []
+        return drained
+
+    def close(self):
+        return None
+
+
+class _ExplodingSink(_RecordingSink):
+    """A sink that is itself broken, not merely a sink whose store is."""
+
+    def record(self, turn):
+        raise RuntimeError("sink is broken")
+
+
+def test_asking_on_a_thread_archives_the_turn(tmp_path):
+    sink = _RecordingSink()
+    manager = _manager(tmp_path, chat_memory_sink=sink)
+
+    manager.ask("alpha", query="hello", thread_id="t1")
+
+    assert len(sink.recorded) == 1
+    turn = sink.recorded[0]
+    assert turn.workspace_id == "alpha"
+    assert turn.thread_id == "t1"
+    assert turn.query == "hello"
+
+
+def test_asking_without_a_thread_archives_nothing(tmp_path):
+    sink = _RecordingSink()
+    manager = _manager(tmp_path, chat_memory_sink=sink)
+
+    manager.ask("alpha", query="hello")
+
+    assert sink.recorded == []
+
+
+def test_streaming_a_turn_archives_it_once(tmp_path):
+    sink = _RecordingSink()
+    manager = _manager(tmp_path, chat_memory_sink=sink)
+
+    list(manager.open_stream("alpha", query="hello", thread_id="t1")())
+
+    assert len(sink.recorded) == 1
+
+
+def test_a_cancelled_stream_archives_nothing(tmp_path):
+    sink = _RecordingSink()
+    manager = _manager(tmp_path, chat_memory_sink=sink)
+    factory = manager.open_stream("alpha", query="hello", thread_id="t1", query_id="q1")
+    manager.cancel("alpha", "q1")
+
+    list(factory())
+
+    assert sink.recorded == []
+
+
+def test_an_archive_error_rides_out_on_the_response_errors(tmp_path):
+    sink = _RecordingSink()
+    sink.errors = ["chat_memory: record failed (ProgrammingError)"]
+    manager = _manager(tmp_path, chat_memory_sink=sink)
+
+    payload = manager.ask("alpha", query="hello", thread_id="t1")
+
+    assert "chat_memory: record failed (ProgrammingError)" in payload["errors"]
+    assert all(isinstance(item, str) for item in payload["errors"])
+
+
+def test_a_sink_that_raises_degrades_the_turn_instead_of_failing_it(tmp_path):
+    manager = _manager(tmp_path, chat_memory_sink=_ExplodingSink())
+
+    payload = manager.ask("alpha", query="hello", thread_id="t1")
+
+    assert payload["answer"]
+    assert any("chat_memory" in item for item in payload["errors"])
+    # Nothing but the class name reaches the wire.
+    assert not any("sink is broken" in item for item in payload["errors"])
+
+
+def test_an_archive_error_is_reported_once_not_on_every_later_turn(tmp_path):
+    sink = _RecordingSink()
+    sink.errors = ["chat_memory: record failed (ProgrammingError)"]
+    manager = _manager(tmp_path, chat_memory_sink=sink)
+
+    manager.ask("alpha", query="first", thread_id="t1")
+    second = manager.ask("alpha", query="second", thread_id="t1")
+
+    assert second["errors"] == []
+
+
+def test_deleting_a_thread_and_a_workspace_reaches_the_sink(tmp_path):
+    sink = _RecordingSink()
+    manager = _manager(tmp_path, chat_memory_sink=sink)
+    manager.ask("alpha", query="hello", thread_id="t1")
+
+    manager.delete_thread("alpha", "t1")
+    manager.delete_all_threads("alpha")
+
+    assert sink.deleted_threads == [("alpha", "t1")]
+    assert sink.deleted_workspaces == ["alpha"]
+
+
+def test_a_manager_without_a_sink_still_answers(tmp_path):
+    manager = _manager(tmp_path)
+
+    payload = manager.ask("alpha", query="hello", thread_id="t1")
+
+    assert payload["errors"] == []
