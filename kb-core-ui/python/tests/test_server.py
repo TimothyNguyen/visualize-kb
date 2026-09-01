@@ -80,6 +80,27 @@ def bots_app(tmp_path):
         yield Server(store, str(tmp_path), "", runner, None)
 
 
+def test_folder_lookup_lists_allowed_directories(tmp_path):
+    root = tmp_path / "folders"
+    (root / "api").mkdir(parents=True)
+    (root / "docs").mkdir()
+    (root / "notes.txt").write_text("ignored", encoding="utf-8")
+    with Store(str(tmp_path / "graph.db")) as store:
+        app = Server(store, str(root), "", None, None)
+        status, body, _ = request(app, "GET", "/api/folders")
+        assert status == 200
+        assert body["path"] == str(root.resolve())
+        assert [entry["name"] for entry in body["directories"]] == ["api", "docs"]
+
+        status, body, _ = request(app, "GET", f"/api/folders?path={urllib.parse.quote(str(root / 'api'))}")
+        assert status == 200
+        assert body["directories"] == []
+
+        status, body, _ = request(app, "GET", f"/api/folders?path={urllib.parse.quote(str(tmp_path))}")
+        assert status == 400
+        assert body["error"] == "folder is outside allowed roots"
+
+
 def test_graph_endpoints(graph_app):
     status, tree, _ = request(graph_app, "GET", "/api/tree")
     assert status == 200

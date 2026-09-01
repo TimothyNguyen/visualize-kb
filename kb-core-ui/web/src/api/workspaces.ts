@@ -60,6 +60,17 @@ export interface WorkspaceStats {
   source_ids: string[]
 }
 
+export interface FolderEntry {
+  name: string
+  path: string
+}
+
+export interface FolderLookup {
+  path: string
+  parent: string
+  directories: FolderEntry[]
+}
+
 async function workspaceRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${SERVICE_API_BASE}/rag/workspaces${path}`, init)
   if (!response.ok) {
@@ -79,6 +90,17 @@ function postJson(body?: unknown): RequestInit {
 
 export function listWorkspaces(): Promise<Workspace[]> {
   return workspaceRequest("")
+}
+
+export function lookupFolder(path = ""): Promise<FolderLookup> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : ""
+  return fetch(`${SERVICE_API_BASE}/folders${query}`).then(async (response) => {
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      throw new ApiRequestError(response.status, body?.error || response.statusText)
+    }
+    return response.json() as Promise<FolderLookup>
+  })
 }
 
 export function createWorkspace(id: string, name: string): Promise<Workspace> {

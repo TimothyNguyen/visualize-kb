@@ -10,6 +10,7 @@ from __future__ import annotations
 import mimetypes
 import os
 import threading
+from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from kb_core_ui import jsonx
@@ -84,6 +85,9 @@ class Server:
         self.chat_manager = chat_manager
         self.chat_memory = chat_memory
         self.chat_memory_sink = chat_memory_sink
+        configured_roots = os.environ.get("KB_ALLOWED_FOLDER_ROOTS", "")
+        roots = [repo_root, *(item.strip() for item in configured_roots.split(os.pathsep) if item.strip())]
+        self.folder_roots = tuple(Path(root).resolve() for root in roots)
         self.mux = Mux()
         # Go's *sql.DB is a connection pool safe for concurrent use; a
         # sqlite3.Connection is not. Requests arrive on separate threads, so
@@ -100,6 +104,7 @@ class Server:
         self.mux.handle("GET /api/graph/subgraph", self.handle_subgraph)
         self.mux.handle("GET /api/search", self.handle_search)
         self.mux.handle("GET /api/source", self.handle_source)
+        self.mux.handle("GET /api/folders", self.handle_folders)
         self.mux.handle("GET /api/stats", self.handle_stats)
         self.mux.handle("GET /api/files/", self.handle_file_symbols)
         self.mux.handle("GET /api/symbols/", self.handle_symbols)
@@ -255,6 +260,35 @@ class Server:
         return write_json(
             {"filePath": file, "lines": all_lines[start - 1 : end], "startLine": start}
         )
+
+    def handle_folders(self, req: Request) -> Response:
+        """List local folders the UI may use as ingestion sources.
+
+        Folder lookup is intentionally server-side: browsers cannot expose a
+        reliable absolute path to a local directory picker.
+        """
+        requested = req.get_query("path") or str(self.folder_roots[0])
+        folder = Path(requested).expanduser().resolve()
+        try:
+            allowed = any(os.path.commonpath((str(folder), str(root))) == str(root) for root in self.folder_roots)
+        except ValueError:
+            allowed = False
+        if not allowed:
+            return write_error(400, "folder is outside allowed roots")
+        if not folder.is_dir():
+            return write_error(404, "folder not found: " + requested)
+        try:
+            directories = sorted(
+                ({"name": child.name, "path": str(child)} for child in folder.iterdir() if child.is_dir()),
+                key=lambda item: item["name"].lower(),
+            )
+        except OSError as exc:
+            return write_error(403, "cannot list folder: " + str(exc))
+        return write_json({
+            "path": str(folder),
+            "parent": str(folder.parent) if folder.parent != folder else str(folder),
+            "directories": directories,
+        })
 
     def handle_stats(self, req: Request) -> Response:
         try:

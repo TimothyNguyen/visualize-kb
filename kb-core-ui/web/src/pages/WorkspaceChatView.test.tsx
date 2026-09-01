@@ -64,6 +64,7 @@ function renderChat() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  window.localStorage.clear()
   agent.state = {}
   listWorkspaces.mockResolvedValue([workspace("alpha", "Alpha", ["repo", "docs"]), workspace("beta", "Beta", ["wiki"])])
   getWorkspaceStats.mockResolvedValue({ workspace_id: "alpha", nodes: 12, relationships: 7, source_ids: ["repo"] })
