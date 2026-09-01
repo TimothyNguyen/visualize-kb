@@ -44,10 +44,12 @@ from kb_core_ui.rag import (
     RepoGraphIngestor,
     SourceDocument,
     SourceReconciler,
+    SyncChatMemorySink,
     WorkspaceRegistry,
     WorkspaceManager,
 )
 from kb_core_ui.indexer import index
+from kb_core_ui.memory import ChatMemoryStore
 from kb_core_ui.rag.coordinator import IngestionCoordinator
 from kb_core_ui.rag.seed import load_seed_fixture, seed_workspace
 from kb_core_ui.server import Server
@@ -76,6 +78,7 @@ REQUIRED_STAGES = (
     "graph_explorer_compatibility",
     "dev_stack_seed",
     "mvp_isolation_sweep",
+    "chat_memory_persistence",
     "source_delete_isolation",
     "registry_reopen",
     "graph_cleanup",
@@ -1676,6 +1679,155 @@ def execute_rag_workflow(
             "beta_nodes_after_alpha_delete": after["nodes"],
         }
 
+    def chat_memory_persistence_stage() -> dict[str, Any]:
+        """A chat turn has to land in SQLite as well as FalkorDB, scoped to the
+        workspace that produced it, and has to disappear when that workspace is
+        deleted -- deletion runs through WorkspaceManager, which is the path a
+        real caller takes and the one that used to miss the archive entirely."""
+
+        config = _config(backend)
+        registry = WorkspaceRegistry(str(work_dir / "chat-memory-workspaces.json"))
+
+        def adapter_factory(selected_workspace_id: str):
+            driver = state.get("driver") if backend == "fake" else None
+            return FalkorDBAdapter(config, selected_workspace_id, driver=driver)
+
+        chat_memory = ChatMemoryStore(str(work_dir / "chat-memory.db"))
+        sink = SyncChatMemorySink(chat_memory)
+        manager = WorkspaceManager(
+            registry,
+            config,
+            adapter_factory=adapter_factory,
+            ingestion_coordinator=IngestionCoordinator(
+                registry, adapter_factory=adapter_factory, embeddings=_HarnessEmbeddings()
+            ),
+            chat_memory_sink=sink,
+        )
+        chat = ChatManager(
+            registry,
+            config,
+            adapter_factory=adapter_factory,
+            embeddings=state["embeddings"],
+            sleep=lambda _seconds: None,
+            chat_memory_sink=sink,
+        )
+
+        tenants = {}
+        for tenant in ("alpha", "beta"):
+            source_dir = work_dir / f"chatmem-{tenant}"
+            source_dir.mkdir(parents=True, exist_ok=True)
+            (source_dir / "graph.json").write_text(
+                json.dumps(
+                    {
+                        "nodes": [
+                            {
+                                "id": f"{tenant}/store.py:Store",
+                                "label": f"{tenant.capitalize()}Store",
+                                "file_type": "code",
+                                "source_location": f"{tenant}/store.py:L1",
+                                "doc": f"{tenant} owns these graph records.",
+                                "_origin": "ast",
+                            }
+                        ],
+                        "links": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            workspace_id = f"chatmem-{tenant}"
+            source_id = f"{tenant}-repo"
+            manager.create_workspace(workspace_id, f"Chat memory {tenant}")
+            manager.add_source(workspace_id, source_id, "local_repo", str(source_dir))
+            run = manager.start_ingestion(workspace_id, source_id)
+            if run["status"] != "succeeded":
+                raise WorkflowFailure(f"{workspace_id} ingestion failed: {run!r}")
+            tenants[tenant] = {"workspace_id": workspace_id, "source_id": source_id}
+
+        alpha, beta = tenants["alpha"], tenants["beta"]
+        store = Store(str(work_dir / "chat-memory-graph.db"))
+        app = Server(
+            store,
+            str(work_dir),
+            workspace_manager=manager,
+            chat_manager=chat,
+            chat_memory=chat_memory,
+        )
+
+        def call(method: str, url: str, payload: dict[str, Any] | None = None):
+            body = None if payload is None else json.dumps(payload).encode("utf-8")
+            request = urllib.request.Request(
+                url, data=body, method=method, headers={"Content-Type": "application/json"}
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    return response.status, json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read().decode("utf-8"))
+
+        try:
+            with _serving(app, "rag-chat-memory") as origin:
+                def memory_url(workspace_id: str, leaf: str = "") -> str:
+                    return f"{origin}/api/rag/workspaces/{workspace_id}/memory{leaf}"
+
+                for tenant, values in tenants.items():
+                    status, answered = call(
+                        "POST",
+                        f"{origin}/api/rag/workspaces/{values['workspace_id']}/chat",
+                        {
+                            "query": "graph records",
+                            "thread_id": "t1",
+                            "query_id": f"chatmem-{tenant}",
+                        },
+                    )
+                    if status != 200:
+                        raise WorkflowFailure(f"{tenant} chat failed: {status} {answered!r}")
+                    if any("chat_memory" in error for error in answered["errors"]):
+                        raise WorkflowFailure(f"{tenant} archive reported an error: {answered!r}")
+
+                status, listed = call("GET", memory_url(alpha["workspace_id"]))
+                if status != 200 or len(listed["entries"]) != 1:
+                    raise WorkflowFailure(f"alpha turn was not archived: {status} {listed!r}")
+                if listed["entries"][0]["workspace_id"] != alpha["workspace_id"]:
+                    raise WorkflowFailure(f"archived row is not alpha's: {listed!r}")
+
+                status, found = call(
+                    "GET", memory_url(alpha["workspace_id"], "/search?q=graph+records&top=10")
+                )
+                if status != 200 or not found["hits"]:
+                    raise WorkflowFailure(f"alpha archive is not searchable: {found!r}")
+                foreign = [
+                    hit
+                    for hit in found["hits"]
+                    if hit["entry"]["workspace_id"] != alpha["workspace_id"]
+                ]
+                if foreign:
+                    raise WorkflowFailure(f"alpha search crossed a workspace: {foreign!r}")
+
+                manager.delete_workspace(alpha["workspace_id"])
+
+                alpha_left = chat_memory.count(alpha["workspace_id"])
+                if alpha_left:
+                    raise WorkflowFailure(
+                        f"deleting alpha left {alpha_left} archived rows behind"
+                    )
+                status, beta_left = call("GET", memory_url(beta["workspace_id"]))
+                if status != 200 or len(beta_left["entries"]) != 1:
+                    raise WorkflowFailure(f"deleting alpha touched beta: {beta_left!r}")
+
+                manager.delete_workspace(beta["workspace_id"])
+        finally:
+            chat_memory.close()
+            store.close()
+
+        return {
+            "transport": "http",
+            "workspaces": [alpha["workspace_id"], beta["workspace_id"]],
+            "alpha_entries": len(listed["entries"]),
+            "alpha_hits": len(found["hits"]),
+            "beta_entries_after_alpha_delete": len(beta_left["entries"]),
+            "alpha_entries_after_workspace_delete": alpha_left,
+        }
+
     def reopen_stage() -> dict[str, Any]:
         reopened = WorkspaceRegistry(str(work_dir / "workspaces.json")).get(state["workspace"].id)
         statuses = {source_id: source.status for source_id, source in reopened.sources.items()}
@@ -1711,6 +1863,7 @@ def execute_rag_workflow(
         ("graph_explorer_compatibility", graph_explorer_compatibility_stage),
         ("dev_stack_seed", dev_stack_seed_stage),
         ("mvp_isolation_sweep", mvp_isolation_sweep_stage),
+        ("chat_memory_persistence", chat_memory_persistence_stage),
         ("source_delete_isolation", delete_stage),
         ("registry_reopen", reopen_stage),
         ("graph_cleanup", cleanup_stage),
