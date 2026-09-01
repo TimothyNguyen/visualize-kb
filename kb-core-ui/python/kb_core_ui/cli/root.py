@@ -33,8 +33,10 @@ from kb_core_ui.errors import KbError
 from kb_core_ui.indexer import index
 from kb_core_ui.mcp import Server as McpServer
 from kb_core_ui.mcp import serve_stdio
+from kb_core_ui.memory import ChatMemoryStore
 from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
+from kb_core_ui.rag.chat_memory import SyncChatMemorySink, ThreadedChatMemorySink
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.falkordb_adapter import AdapterError
 from kb_core_ui.rag.manager import WorkspaceManager
@@ -172,6 +174,13 @@ def _run_parse(cmd: Command, values: dict, args: list[str]) -> None:
 def open_memory(repo_root: str) -> MemoryStore:
     ensure_db_dir(repo_root)
     return MemoryStore(memory_db_path(repo_root))
+
+
+def open_chat_memory(repo_root: str) -> ChatMemoryStore:
+    """The same file as the global memory store, a different table in it."""
+
+    ensure_db_dir(repo_root)
+    return ChatMemoryStore(memory_db_path(repo_root))
 
 
 def _run_memory_add(cmd: Command, values: dict, args: list[str]) -> None:
@@ -435,6 +444,8 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
     repo_root = resolve_repo_path(args)
     store = open_store_and_index(cmd, repo_root, values["db"])
     memory = None
+    chat_memory = None
+    chat_memory_sink = None
     try:
         web_dir = locate_web_dir(values["web-dir"])
         if not web_dir:
@@ -455,7 +466,17 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
             cmd.printf(f"Memory unavailable ({exc}) — serving without the memory tab.\n")
             memory = None
 
-        workspace_manager = _default_workspace_manager(repo_root)
+        # The chat archive is best-effort too: without it the chat still
+        # answers, it just is not recorded and the memory routes 404.
+        try:
+            chat_memory = open_chat_memory(repo_root)
+            chat_memory_sink = ThreadedChatMemorySink(SyncChatMemorySink(chat_memory))
+        except KbError as exc:
+            cmd.printf(f"Chat memory unavailable ({exc}) — chat turns will not be archived.\n")
+            chat_memory = None
+            chat_memory_sink = None
+
+        workspace_manager = _default_workspace_manager(repo_root, chat_memory_sink)
         chat_manager = None
         if workspace_manager.config.enabled:
             try:
@@ -466,8 +487,21 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
                         "GraphRAG dependencies are missing; install kb-core-ui[rag]"
                     ) from exc
                 raise
-            chat_manager = ChatManager(workspace_manager.registry, workspace_manager.config)
-        srv = Server(store, repo_root, web_dir, runner, memory, workspace_manager, chat_manager)
+            chat_manager = ChatManager(
+                workspace_manager.registry,
+                workspace_manager.config,
+                chat_memory_sink=chat_memory_sink,
+            )
+        srv = Server(
+            store,
+            repo_root,
+            web_dir,
+            runner,
+            memory,
+            workspace_manager,
+            chat_manager,
+            chat_memory,
+        )
         display_host = "localhost" if values["host"] in ("127.0.0.1", "localhost") else values["host"]
         url = f"http://{display_host}:{values['port']}"
         cmd.printf(f"kb-core-ui serving {url}\n")
@@ -475,6 +509,11 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
             open_browser(url)
         listen_and_serve(values["host"], values["port"], srv)
     finally:
+        # The sink first: it must drain onto the store before the store goes.
+        if chat_memory_sink is not None:
+            chat_memory_sink.close()
+        if chat_memory is not None:
+            chat_memory.close()
         if memory is not None:
             memory.close()
         store.close()
@@ -680,7 +719,7 @@ def _run_help(cmd: Command, values: dict, args: list[str]) -> None:
         root.out.write(target.help_string())
 
 
-def _default_workspace_manager(repo_root: str) -> WorkspaceManager:
+def _default_workspace_manager(repo_root: str, chat_memory_sink=None) -> WorkspaceManager:
     registry = WorkspaceRegistry(workspace_registry_path(repo_root))
     config = RagConfig.from_env(os.environ)
     coordinator = None
@@ -688,7 +727,12 @@ def _default_workspace_manager(repo_root: str) -> WorkspaceManager:
         from kb_core_ui.rag.coordinator import IngestionCoordinator
 
         coordinator = IngestionCoordinator.for_config(registry, config)
-    return WorkspaceManager(registry, config, ingestion_coordinator=coordinator)
+    return WorkspaceManager(
+        registry,
+        config,
+        ingestion_coordinator=coordinator,
+        chat_memory_sink=chat_memory_sink,
+    )
 
 
 def _workspace_leaf(use, short, run, *, args=no_args, flags=()):
