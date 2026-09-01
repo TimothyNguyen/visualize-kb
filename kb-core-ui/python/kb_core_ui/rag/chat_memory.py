@@ -15,7 +15,7 @@ import queue
 import sys
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Iterable, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Iterable, Protocol
 
 if TYPE_CHECKING:
     from kb_core_ui.memory import ChatMemoryStore
@@ -44,7 +44,6 @@ def compose_text(answer: str, citations: Iterable[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-@runtime_checkable
 class ChatMemorySink(Protocol):
     def record(self, turn: "PersistedTurn") -> None: ...
 
@@ -179,7 +178,6 @@ class ThreadedChatMemorySink:
         self._inner = inner
         self._timeout = timeout
         self._queue: queue.Queue = queue.Queue(maxsize=maxsize)
-        self._gate = threading.Lock()
         self._closed = False
         self._thread = threading.Thread(target=self._run, name="chat-memory-sink", daemon=True)
         self._thread.start()
@@ -190,15 +188,12 @@ class ThreadedChatMemorySink:
             try:
                 if item is None:
                     return
-                with self._gate:
-                    if isinstance(item, _Record):
-                        self._inner.record(item.turn)
-                    elif isinstance(item, _DeleteThread):
-                        item.deleted = self._inner.delete_thread(
-                            item.workspace_id, item.thread_id
-                        )
-                    elif isinstance(item, _DeleteWorkspace):
-                        item.deleted = self._inner.delete_workspace(item.workspace_id)
+                if isinstance(item, _Record):
+                    self._inner.record(item.turn)
+                elif isinstance(item, _DeleteThread):
+                    item.deleted = self._inner.delete_thread(item.workspace_id, item.thread_id)
+                elif isinstance(item, _DeleteWorkspace):
+                    item.deleted = self._inner.delete_workspace(item.workspace_id)
             finally:
                 if item is not None:
                     item.done.set()
@@ -245,20 +240,6 @@ class ThreadedChatMemorySink:
         self._submit(item)
         item.done.wait(self._timeout)
         return item.deleted
-
-    def flush(self, timeout: float = 5.0) -> None:
-        marker = _Work()
-        self._submit(marker)
-        marker.done.wait(timeout)
-
-    def pause(self) -> None:
-        """Test-only: hold the worker still so the queue can be filled."""
-
-        self._gate.acquire()
-
-    def resume(self) -> None:
-        if self._gate.locked():
-            self._gate.release()
 
     def drain_errors(self, workspace_id: str) -> list[str]:
         return self._inner.drain_errors(workspace_id)

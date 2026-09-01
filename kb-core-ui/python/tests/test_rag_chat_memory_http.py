@@ -167,7 +167,8 @@ def test_a_delete_cannot_race_ahead_of_a_queued_write(tmp_path):
         status, _, _ = request(app, "DELETE", "/api/rag/workspaces/alpha/memory")
 
         assert status == 200
-        sink.flush(timeout=5.0)
+        # The delete waited on its own queue item, which FIFO puts behind the
+        # write, so by here both have been applied.
         assert memory.count("alpha") == 0
     finally:
         sink.close()

@@ -46,14 +46,14 @@ _COLUMNS = (
 )
 
 
-def make_chat_id(workspace_id: str, turn_id: str) -> str:
+def _make_chat_id(workspace_id: str, turn_id: str) -> str:
     """Derived rather than random so re-recording a turn replaces its row
     instead of racing the unique index on (workspace_id, turn_id)."""
 
     return f"chat-{workspace_id}-{turn_id}"
 
 
-def chat_source(workspace_id: str, thread_id: str, turn_id: str) -> str:
+def _chat_source(workspace_id: str, thread_id: str, turn_id: str) -> str:
     return f"chat://{workspace_id}/{thread_id}/{turn_id}"
 
 
@@ -125,12 +125,6 @@ class ChatMemoryStore:
         with self._lock:
             self.db.close()
 
-    def __enter__(self) -> "ChatMemoryStore":
-        return self
-
-    def __exit__(self, *exc) -> None:
-        self.close()
-
     def add(
         self,
         workspace_id: str,
@@ -145,14 +139,14 @@ class ChatMemoryStore:
             return None
         stamp = at if at is not None else now()
         entry = ChatMemoryEntry(
-            id=make_chat_id(workspace_id, turn_id),
+            id=_make_chat_id(workspace_id, turn_id),
             workspace_id=workspace_id,
             thread_id=thread_id,
             turn_id=turn_id,
             seq=int(seq),
             title=title,
             text=text,
-            source=chat_source(workspace_id, thread_id, turn_id),
+            source=_chat_source(workspace_id, thread_id, turn_id),
             created_at=stamp.format(),
         )
         vec = self.embedder.embed(title + "\n" + text)
@@ -176,14 +170,6 @@ class ChatMemoryStore:
                 ),
             )
         return entry
-
-    def get(self, workspace_id: str, entry_id: str) -> ChatMemoryEntry | None:
-        with self._lock:
-            row = self.db.execute(
-                f"SELECT {_COLUMNS} FROM chat_memories WHERE workspace_id = ? AND id = ?",
-                (workspace_id, entry_id),
-            ).fetchone()
-        return None if row is None else _scan(row)[0]
 
     def list(self, workspace_id: str, thread_id: str = "") -> list[ChatMemoryEntry]:
         sql = f"SELECT {_COLUMNS} FROM chat_memories WHERE workspace_id = ?"
@@ -222,14 +208,6 @@ class ChatMemoryStore:
 
         hits.sort(key=lambda h: h.score, reverse=True)
         return [h for h in hits if h.score >= MIN_SCORE][:k]
-
-    def remove(self, workspace_id: str, entry_id: str) -> bool:
-        with self._lock:
-            cur = self.db.execute(
-                "DELETE FROM chat_memories WHERE workspace_id = ? AND id = ?",
-                (workspace_id, entry_id),
-            )
-        return cur.rowcount > 0
 
     def delete_thread(self, workspace_id: str, thread_id: str) -> int:
         with self._lock:

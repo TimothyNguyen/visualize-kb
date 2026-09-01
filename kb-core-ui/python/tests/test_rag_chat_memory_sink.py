@@ -50,6 +50,26 @@ def _turn(response=None, turn_id="turn-1", thread_id="t1", seq=1, query="a quest
     )
 
 
+def _stall(store):
+    """Hold the worker inside one archive write so the queue behind it fills.
+
+    This is what a real stall looks like -- embedding a turn can be an HTTP
+    call -- so the pressure the queue sees here is the pressure it is sized for.
+    """
+
+    entered = threading.Event()
+    release = threading.Event()
+    real_add = store.add
+
+    def blocking_add(*args, **kwargs):
+        entered.set()
+        release.wait(5)
+        return real_add(*args, **kwargs)
+
+    store.add = blocking_add
+    return entered, release
+
+
 def _until(predicate, timeout: float = 5.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -197,11 +217,10 @@ def test_a_broken_store_does_not_raise_on_delete(store):
 
 def test_a_recorded_turn_lands_in_the_store_without_the_caller_waiting(store):
     sink = ThreadedChatMemorySink(SyncChatMemorySink(store))
-    try:
-        sink.record(_turn())
-        sink.flush(timeout=5.0)
-    finally:
-        sink.close()
+    sink.record(_turn())
+    # The close sentinel is last in a FIFO queue, so returning from close means
+    # everything queued ahead of it has been applied.
+    sink.close()
 
     assert store.count("alpha") == 1
 
@@ -234,27 +253,27 @@ def test_deleting_a_thread_waits_for_the_worker(store):
 
 def test_store_errors_from_the_worker_surface_on_a_later_drain(store):
     sink = ThreadedChatMemorySink(SyncChatMemorySink(store))
-    try:
-        store.close()
-        sink.record(_turn())
-        sink.flush(timeout=5.0)
+    store.close()
+    sink.record(_turn())
+    sink.close()
 
-        errors = sink.drain_errors("alpha")
-    finally:
-        sink.close()
+    errors = sink.drain_errors("alpha")
 
     assert any(error.startswith("chat_memory:") for error in errors)
 
 
 def test_a_full_queue_drops_a_write_and_says_so(store):
     sink = ThreadedChatMemorySink(SyncChatMemorySink(store), maxsize=1)
-    sink.pause()
+    entered, release = _stall(store)
     try:
+        # The first record is taken off the queue and stalls in the store, so
+        # the two behind it contend for the one remaining slot.
         sink.record(_turn(turn_id="a1"))
+        _until(entered.is_set)
         sink.record(_turn(turn_id="a2"))
         sink.record(_turn(turn_id="a3"))
     finally:
-        sink.resume()
+        release.set()
         sink.close()
 
     assert any("dropped" in error for error in sink.drain_errors("alpha"))
@@ -267,18 +286,19 @@ def test_a_full_queue_never_drops_a_delete(store):
     worked -- so writes are expendable under pressure and deletes are not."""
 
     sink = ThreadedChatMemorySink(SyncChatMemorySink(store), maxsize=1)
-    sink.pause()
+    entered, release = _stall(store)
     deleter = threading.Thread(target=lambda: sink.delete_thread("alpha", "t1"))
     try:
-        # The first record is taken off the queue immediately and blocks on the
-        # paused worker, so the delete behind it is what fills the queue.
+        # The first record is taken off the queue and stalls in the store, so
+        # the delete behind it is what fills the queue.
         sink.record(_turn(turn_id="a1"))
+        _until(entered.is_set)
         deleter.start()
         _until(lambda: sink._queue.qsize() == 1)
         for index in range(5):
             sink.record(_turn(turn_id=f"flood-{index}"))
     finally:
-        sink.resume()
+        release.set()
         deleter.join(timeout=5)
         sink.close()
 

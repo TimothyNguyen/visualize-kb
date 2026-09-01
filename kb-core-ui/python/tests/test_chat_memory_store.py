@@ -39,7 +39,7 @@ def test_an_added_entry_comes_back_with_its_identity_intact(store):
     assert entry.title == "what is the graph"
     assert entry.source == "chat://alpha/t1/turn-1"
     assert entry.created_at
-    assert store.get("alpha", entry.id) == entry
+    assert store.list("alpha") == [entry]
 
 
 def test_a_search_returns_only_the_asking_workspaces_rows(store):
@@ -52,13 +52,11 @@ def test_a_search_returns_only_the_asking_workspaces_rows(store):
     assert {hit.entry.workspace_id for hit in hits} == {"alpha"}
 
 
-def test_reading_another_workspaces_entry_by_id_returns_nothing(store):
-    entry = _add(store, "alpha", turn_id="a1")
-    assert entry is not None
+def test_listing_returns_only_the_asking_workspaces_rows(store):
+    _add(store, "alpha", turn_id="a1")
+    _add(store, "beta", turn_id="b1")
 
-    assert store.get("beta", entry.id) is None
-    assert store.remove("beta", entry.id) is False
-    assert store.get("alpha", entry.id) is not None
+    assert [e.turn_id for e in store.list("alpha")] == ["a1"]
 
 
 def test_the_same_turn_id_recorded_twice_stays_one_row(store):
@@ -67,7 +65,7 @@ def test_the_same_turn_id_recorded_twice_stays_one_row(store):
 
     assert first is not None and second is not None
     assert store.count("alpha") == 1
-    assert store.get("alpha", second.id).text == "second"
+    assert store.list("alpha")[0].text == "second"
 
 
 def test_the_same_turn_id_in_two_workspaces_stays_two_rows(store):
