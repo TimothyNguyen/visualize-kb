@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import asdict
 from typing import Callable, Sequence
 
+from kb_core_ui.rag.chat_memory import ChatMemorySink, NullChatMemorySink
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.falkordb_adapter import FalkorDBAdapter
 from kb_core_ui.rag.workspaces import RUN_CANCELLED, WorkspaceError, WorkspaceRegistry
@@ -21,6 +23,7 @@ class WorkspaceManager:
         *,
         adapter_factory: AdapterFactory | None = None,
         ingestion_coordinator: object | None = None,
+        chat_memory_sink: ChatMemorySink | None = None,
         max_context_records: int = 200,
     ) -> None:
         if max_context_records < 1:
@@ -31,6 +34,7 @@ class WorkspaceManager:
             lambda workspace_id: FalkorDBAdapter(config, workspace_id)
         )
         self.ingestion_coordinator = ingestion_coordinator
+        self.chat_memory_sink = chat_memory_sink or NullChatMemorySink()
         self.max_context_records = max_context_records
 
     def list_workspaces(self) -> list[dict[str, object]]:
@@ -42,6 +46,13 @@ class WorkspaceManager:
     def delete_workspace(self, workspace_id: str) -> dict[str, object]:
         self.registry.mark_deleting(workspace_id)
         self._with_adapter(workspace_id, lambda adapter: adapter.delete_graph())
+        # The chat archive lives outside the graph, so dropping the graph does
+        # not reach it. Without this the workspace disappears while its turns
+        # stay searchable.
+        try:
+            self.chat_memory_sink.delete_workspace(workspace_id)
+        except Exception as exc:  # noqa: BLE001 - a broken archive cannot block a delete
+            print(f"chat memory delete_workspace failed: {exc}", file=sys.stderr)
         self.registry.remove_workspace(workspace_id)
         return {"workspace_id": workspace_id, "deleted": True}
 

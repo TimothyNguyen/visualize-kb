@@ -160,3 +160,69 @@ def test_focused_context_returns_only_the_bounded_subgraph(manager):
     node_query, node_params = _query_containing(manager, "$identities")
     assert "LIMIT $limit" in node_query
     assert node_params["identities"] == ["node-1", "node-2"]
+
+
+# --------------------------------------------------------------------------- #
+# chat memory cascade -- a deleted workspace leaves no searchable archive
+# --------------------------------------------------------------------------- #
+
+
+class _CascadeSink:
+    def __init__(self, explode: bool = False):
+        self.deleted: list[str] = []
+        self._explode = explode
+
+    def record(self, turn):
+        return None
+
+    def delete_thread(self, workspace_id, thread_id):
+        return None
+
+    def delete_workspace(self, workspace_id):
+        if self._explode:
+            raise RuntimeError("sink is broken")
+        self.deleted.append(workspace_id)
+
+    def drain_errors(self):
+        return []
+
+    def close(self):
+        return None
+
+
+def _manager_with_sink(tmp_path, sink):
+    registry = WorkspaceRegistry(str(tmp_path / "workspaces.json"))
+    return WorkspaceManager(
+        registry,
+        RagConfig(enabled=False),
+        adapter_factory=lambda workspace_id: _Adapter(),
+        chat_memory_sink=sink,
+    )
+
+
+def test_deleting_a_workspace_clears_its_chat_archive(tmp_path):
+    sink = _CascadeSink()
+    manager = _manager_with_sink(tmp_path, sink)
+    manager.create_workspace("alpha", "Alpha")
+
+    manager.delete_workspace("alpha")
+
+    assert sink.deleted == ["alpha"]
+
+
+def test_a_broken_archive_does_not_block_the_delete(tmp_path):
+    manager = _manager_with_sink(tmp_path, _CascadeSink(explode=True))
+    manager.create_workspace("alpha", "Alpha")
+
+    assert manager.delete_workspace("alpha")["deleted"] is True
+    assert manager.list_workspaces() == []
+
+
+def test_a_manager_without_a_sink_still_deletes(tmp_path):
+    registry = WorkspaceRegistry(str(tmp_path / "workspaces.json"))
+    manager = WorkspaceManager(
+        registry, RagConfig(enabled=False), adapter_factory=lambda w: _Adapter()
+    )
+    manager.create_workspace("alpha", "Alpha")
+
+    assert manager.delete_workspace("alpha")["deleted"] is True
