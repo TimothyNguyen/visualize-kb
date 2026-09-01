@@ -183,7 +183,7 @@ class _CascadeSink:
             raise RuntimeError("sink is broken")
         self.deleted.append(workspace_id)
 
-    def drain_errors(self):
+    def drain_errors(self, workspace_id):
         return []
 
     def close(self):

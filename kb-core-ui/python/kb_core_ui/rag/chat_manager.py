@@ -236,7 +236,7 @@ class ChatManager:
         self.sleep = sleep
         self.chat_memory_sink = chat_memory_sink or NullChatMemorySink()
 
-        self._sink_errors: list[str] = []
+        self._sink_errors: dict[str, list[str]] = {}
         self._lock = threading.Lock()
         self._active_query_ids: set[str] = set()
         self._cancelled_query_ids: set[str] = set()
@@ -256,17 +256,23 @@ class ChatManager:
             self.chat_memory_sink.record(turn)
         except Exception as exc:  # noqa: BLE001 - a sink must never break a turn
             print(f"chat memory sink raised: {exc}", file=sys.stderr)
-            self._sink_errors.append(f"chat_memory: record failed ({exc.__class__.__name__})")
+            message = f"chat_memory: record failed ({exc.__class__.__name__})"
+            with self._lock:
+                self._sink_errors.setdefault(turn.workspace_id, []).append(message)
 
-    def _with_sink_errors(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Append archive failures to the wire payload's errors.
+    def _with_sink_errors(self, payload: dict[str, Any], workspace_id: str) -> dict[str, Any]:
+        """Append this workspace's archive failures to the wire payload's errors.
+
+        Scoped by workspace because these strings reach a browser, and one
+        tenant may not be shown a failure another tenant's turn caused.
 
         Builds a new list rather than mutating in place: the list under
         ``errors`` is the one the workflow's ChatResponse owns.
         """
 
-        drained = self._sink_errors + list(self.chat_memory_sink.drain_errors())
-        self._sink_errors = []
+        with self._lock:
+            drained = self._sink_errors.pop(workspace_id, [])
+        drained += list(self.chat_memory_sink.drain_errors(workspace_id))
         if drained:
             payload["errors"] = list(payload.get("errors", ())) + drained
         return payload
@@ -384,7 +390,9 @@ class ChatManager:
             with self._lock:
                 self._active_query_ids.discard(qid)
 
-        payload = self._with_sink_errors(chat_contract_payload(response.to_json_dict()))
+        payload = self._with_sink_errors(
+            chat_contract_payload(response.to_json_dict()), workspace_id
+        )
         self._cache_query(qid, workspace_id, payload)
         return payload
 
@@ -505,7 +513,9 @@ class ChatManager:
                 # disconnect after this point can never lose a completed
                 # turn, and nothing before this point can ever be mistaken
                 # for a complete one.
-                payload = self._with_sink_errors(chat_contract_payload(response.to_json_dict()))
+                payload = self._with_sink_errors(
+                    chat_contract_payload(response.to_json_dict()), workspace_id
+                )
                 self._cache_query(qid, workspace_id, payload)
                 yield SSE_EVENT_COMPLETED, payload
             finally:

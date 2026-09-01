@@ -99,7 +99,7 @@ def test_recording_a_turn_puts_it_in_the_store(store):
     assert entries[0].title == "a question"
     assert entries[0].text.startswith("the graph is a graph")
     assert entries[0].source == "chat://alpha/t1/turn-1"
-    assert sink.drain_errors() == []
+    assert sink.drain_errors("alpha") == []
 
 
 def test_a_recorded_turn_keeps_its_citations(store):
@@ -123,10 +123,10 @@ def test_a_broken_store_yields_an_error_string_not_an_exception(store):
 
     sink.record(_turn())
 
-    errors = sink.drain_errors()
+    errors = sink.drain_errors("alpha")
     assert len(errors) == 1
     assert errors[0].startswith("chat_memory:")
-    assert sink.drain_errors() == []
+    assert sink.drain_errors("alpha") == []
 
 
 def test_an_error_string_never_carries_the_exception_detail(store):
@@ -135,10 +135,35 @@ def test_an_error_string_never_carries_the_exception_detail(store):
 
     sink.record(_turn())
 
-    message = sink.drain_errors()[0]
+    message = sink.drain_errors("alpha")[0]
     assert "ProgrammingError" in message
     assert "memory.db" not in message
     assert "closed database" not in message
+
+
+def test_an_error_only_reaches_the_workspace_that_caused_it(store):
+    """Errors ride out on a chat response, so an unscoped buffer would show one
+    tenant a failure caused by another tenant's turn."""
+
+    sink = SyncChatMemorySink(store)
+    store.close()
+
+    sink.record(_turn())
+
+    assert sink.drain_errors("beta") == []
+    assert len(sink.drain_errors("alpha")) == 1
+    assert sink.drain_errors("alpha") == []
+
+
+def test_a_delete_error_is_scoped_to_its_workspace(store):
+    sink = SyncChatMemorySink(store)
+    store.close()
+
+    sink.delete_thread("alpha", "t1")
+    sink.delete_workspace("beta")
+
+    assert len(sink.drain_errors("alpha")) == 1
+    assert len(sink.drain_errors("beta")) == 1
 
 
 def test_deleting_a_thread_removes_only_that_thread(store):
@@ -167,7 +192,7 @@ def test_a_broken_store_does_not_raise_on_delete(store):
     sink.delete_thread("alpha", "t1")
     sink.delete_workspace("alpha")
 
-    assert len(sink.drain_errors()) == 2
+    assert len(sink.drain_errors("alpha")) == 2
 
 
 def test_a_recorded_turn_lands_in_the_store_without_the_caller_waiting(store):
@@ -214,7 +239,7 @@ def test_store_errors_from_the_worker_surface_on_a_later_drain(store):
         sink.record(_turn())
         sink.flush(timeout=5.0)
 
-        errors = sink.drain_errors()
+        errors = sink.drain_errors("alpha")
     finally:
         sink.close()
 
@@ -232,7 +257,7 @@ def test_a_full_queue_drops_a_write_and_says_so(store):
         sink.resume()
         sink.close()
 
-    assert any("dropped" in error for error in sink.drain_errors())
+    assert any("dropped" in error for error in sink.drain_errors("alpha"))
     assert store.count("alpha") <= 2
 
 
@@ -274,4 +299,4 @@ def test_the_null_sink_accepts_everything_and_reports_nothing():
     sink.delete_workspace("alpha")
     sink.close()
 
-    assert sink.drain_errors() == []
+    assert sink.drain_errors("alpha") == []

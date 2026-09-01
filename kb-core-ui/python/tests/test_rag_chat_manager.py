@@ -453,8 +453,13 @@ class _RecordingSink:
     def delete_workspace(self, workspace_id):
         self.deleted_workspaces.append(workspace_id)
 
-    def drain_errors(self):
-        drained, self.errors = self.errors, []
+    def drain_errors(self, workspace_id):
+        drained = [
+            message for owner, message in self.errors if owner == workspace_id
+        ]
+        self.errors = [
+            (owner, message) for owner, message in self.errors if owner != workspace_id
+        ]
         return drained
 
     def close(self):
@@ -464,7 +469,14 @@ class _RecordingSink:
 class _ExplodingSink(_RecordingSink):
     """A sink that is itself broken, not merely a sink whose store is."""
 
+    def __init__(self, only=""):
+        super().__init__()
+        self._only = only
+
     def record(self, turn):
+        if self._only and turn.workspace_id != self._only:
+            super().record(turn)
+            return
         raise RuntimeError("sink is broken")
 
 
@@ -512,7 +524,7 @@ def test_a_cancelled_stream_archives_nothing(tmp_path):
 
 def test_an_archive_error_rides_out_on_the_response_errors(tmp_path):
     sink = _RecordingSink()
-    sink.errors = ["chat_memory: record failed (ProgrammingError)"]
+    sink.errors = [("alpha", "chat_memory: record failed (ProgrammingError)")]
     manager = _manager(tmp_path, chat_memory_sink=sink)
 
     payload = manager.ask("alpha", query="hello", thread_id="t1")
@@ -534,13 +546,37 @@ def test_a_sink_that_raises_degrades_the_turn_instead_of_failing_it(tmp_path):
 
 def test_an_archive_error_is_reported_once_not_on_every_later_turn(tmp_path):
     sink = _RecordingSink()
-    sink.errors = ["chat_memory: record failed (ProgrammingError)"]
+    sink.errors = [("alpha", "chat_memory: record failed (ProgrammingError)")]
     manager = _manager(tmp_path, chat_memory_sink=sink)
 
     manager.ask("alpha", query="first", thread_id="t1")
     second = manager.ask("alpha", query="second", thread_id="t1")
 
     assert second["errors"] == []
+
+
+def test_an_archive_error_never_surfaces_on_another_workspaces_turn(tmp_path):
+    sink = _RecordingSink()
+    sink.errors = [("beta", "chat_memory: record failed (ProgrammingError)")]
+    manager = _manager(tmp_path, chat_memory_sink=sink)
+    manager.registry.create("beta", "Beta")
+
+    alpha = manager.ask("alpha", query="hello", thread_id="t1")
+
+    assert alpha["errors"] == []
+    assert manager.ask("beta", query="hello", thread_id="t1")["errors"] == [
+        "chat_memory: record failed (ProgrammingError)"
+    ]
+
+
+def test_a_raising_sink_degrades_only_the_workspace_it_broke_on(tmp_path):
+    manager = _manager(tmp_path, chat_memory_sink=_ExplodingSink(only="beta"))
+    manager.registry.create("beta", "Beta")
+
+    beta = manager.ask("beta", query="hello", thread_id="t1")
+
+    assert any("chat_memory" in item for item in beta["errors"])
+    assert manager.ask("alpha", query="hello", thread_id="t1")["errors"] == []
 
 
 def test_deleting_a_thread_and_a_workspace_reaches_the_sink(tmp_path):

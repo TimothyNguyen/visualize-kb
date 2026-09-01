@@ -52,7 +52,7 @@ class ChatMemorySink(Protocol):
 
     def delete_workspace(self, workspace_id: str) -> None: ...
 
-    def drain_errors(self) -> list[str]: ...
+    def drain_errors(self, workspace_id: str) -> list[str]: ...
 
     def close(self) -> None: ...
 
@@ -70,7 +70,7 @@ class NullChatMemorySink:
     def delete_workspace(self, workspace_id: str) -> None:
         return None
 
-    def drain_errors(self) -> list[str]:
+    def drain_errors(self, workspace_id: str) -> list[str]:
         return []
 
     def close(self) -> None:
@@ -80,16 +80,21 @@ class NullChatMemorySink:
 class SyncChatMemorySink:
     def __init__(self, store: "ChatMemoryStore"):
         self._store = store
-        self._errors: list[str] = []
+        # Keyed by workspace: these strings ride out on a chat response, so one
+        # tenant must never be shown a failure another tenant's turn caused.
+        # The lock is because a worker thread appends while request threads drain.
+        self._errors: dict[str, list[str]] = {}
+        self._errors_lock = threading.Lock()
 
-    def note_error(self, message: str) -> None:
-        self._errors.append(f"chat_memory: {message}")
+    def note_error(self, workspace_id: str, message: str) -> None:
+        with self._errors_lock:
+            self._errors.setdefault(workspace_id, []).append(f"chat_memory: {message}")
 
-    def _failed(self, action: str, exc: Exception) -> None:
+    def _failed(self, workspace_id: str, action: str, exc: Exception) -> None:
         print(f"chat memory {action} failed: {exc}", file=sys.stderr)
         # Only the class name: this string is echoed to the browser, and a raw
         # sqlite message carries the database path.
-        self.note_error(f"{action} failed ({exc.__class__.__name__})")
+        self.note_error(workspace_id, f"{action} failed ({exc.__class__.__name__})")
 
     def record(self, turn: "PersistedTurn") -> None:
         try:
@@ -105,23 +110,23 @@ class SyncChatMemorySink:
                 ),
             )
         except Exception as exc:  # best-effort archive; never fail the turn
-            self._failed("record", exc)
+            self._failed(turn.workspace_id, "record", exc)
 
     def delete_thread(self, workspace_id: str, thread_id: str) -> None:
         try:
             self._store.delete_thread(workspace_id, thread_id)
         except Exception as exc:  # best-effort archive; never fail the delete
-            self._failed("delete_thread", exc)
+            self._failed(workspace_id, "delete_thread", exc)
 
     def delete_workspace(self, workspace_id: str) -> None:
         try:
             self._store.delete_workspace(workspace_id)
         except Exception as exc:  # best-effort archive; never fail the delete
-            self._failed("delete_workspace", exc)
+            self._failed(workspace_id, "delete_workspace", exc)
 
-    def drain_errors(self) -> list[str]:
-        drained, self._errors = self._errors, []
-        return drained
+    def drain_errors(self, workspace_id: str) -> list[str]:
+        with self._errors_lock:
+            return self._errors.pop(workspace_id, [])
 
     def close(self) -> None:
         # The store's owner opened it and closes it; a sink is only a writer.
@@ -131,6 +136,7 @@ class SyncChatMemorySink:
 @dataclass
 class _Work:
     done: threading.Event = field(default_factory=threading.Event)
+    workspace_id: str = ""
 
 
 @dataclass
@@ -140,13 +146,12 @@ class _Record(_Work):
 
 @dataclass
 class _DeleteThread(_Work):
-    workspace_id: str = ""
     thread_id: str = ""
 
 
 @dataclass
 class _DeleteWorkspace(_Work):
-    workspace_id: str = ""
+    pass
 
 
 class ThreadedChatMemorySink:
@@ -204,17 +209,19 @@ class ThreadedChatMemorySink:
         # outlive the delete behind it.
         if isinstance(item, _Record):
             item.done.set()
-            self._inner.note_error("queue full, dropped a write")
+            self._inner.note_error(item.workspace_id, "queue full, dropped a write")
             return
 
         try:
             self._queue.put(item, timeout=self._timeout)
         except queue.Full:
             item.done.set()
-            self._inner.note_error("queue full, gave up waiting to delete")
+            self._inner.note_error(
+                item.workspace_id, "queue full, gave up waiting to delete"
+            )
 
     def record(self, turn: "PersistedTurn") -> None:
-        self._submit(_Record(turn=turn))
+        self._submit(_Record(workspace_id=turn.workspace_id, turn=turn))
 
     def delete_thread(self, workspace_id: str, thread_id: str) -> None:
         item = _DeleteThread(workspace_id=workspace_id, thread_id=thread_id)
@@ -240,8 +247,8 @@ class ThreadedChatMemorySink:
         if self._gate.locked():
             self._gate.release()
 
-    def drain_errors(self) -> list[str]:
-        return self._inner.drain_errors()
+    def drain_errors(self, workspace_id: str) -> list[str]:
+        return self._inner.drain_errors(workspace_id)
 
     def close(self) -> None:
         if self._closed:
