@@ -42,7 +42,12 @@ from kb_core_ui.rag.chat_memory import ChatMemorySink, NullChatMemorySink
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.falkordb_adapter import AdapterError, FalkorDBAdapter
 from kb_core_ui.rag.indexing import EmbeddingProvider
-from kb_core_ui.rag.persistence import ChatHistoryStore, ChatThreadAdapter, validate_thread_id
+from kb_core_ui.rag.persistence import (
+    ChatHistoryStore,
+    ChatThreadAdapter,
+    PersistedTurn,
+    validate_thread_id,
+)
 from kb_core_ui.rag.workflow import (
     CANCELLED_TEXT,
     ChatModel,
@@ -247,7 +252,7 @@ class ChatManager:
 
     # -- shared plumbing --------------------------------------------------
 
-    def _record_memory(self, turn: Any) -> None:
+    def _record_memory(self, turn: PersistedTurn) -> None:
         """Archive one turn. The sink already swallows store failures; this
         guard is for a sink that is itself broken, because no archive problem
         may turn an answered turn into a failed request."""
@@ -260,7 +265,7 @@ class ChatManager:
             with self._lock:
                 self._sink_errors.setdefault(turn.workspace_id, []).append(message)
 
-    def _archive_delete(self, delete: Callable[[], Any]) -> None:
+    def _archive_delete(self, delete: Callable[[], int]) -> None:
         """The graph-side delete has already happened by the time this runs, so
         a broken sink must not report a completed delete as a failure. Matches
         the guard WorkspaceManager.delete_workspace puts around the same call."""

@@ -36,7 +36,11 @@ from kb_core_ui.mcp import serve_stdio
 from kb_core_ui.memory import ChatMemoryStore
 from kb_core_ui.memory import Store as MemoryStore
 from kb_core_ui.memory import now as memory_now
-from kb_core_ui.rag.chat_memory import SyncChatMemorySink, ThreadedChatMemorySink
+from kb_core_ui.rag.chat_memory import (
+    ChatMemorySink,
+    SyncChatMemorySink,
+    ThreadedChatMemorySink,
+)
 from kb_core_ui.rag.config import RagConfig
 from kb_core_ui.rag.falkordb_adapter import AdapterError
 from kb_core_ui.rag.manager import WorkspaceManager
@@ -720,7 +724,9 @@ def _run_help(cmd: Command, values: dict, args: list[str]) -> None:
         root.out.write(target.help_string())
 
 
-def _default_workspace_manager(repo_root: str, chat_memory_sink=None) -> WorkspaceManager:
+def _default_workspace_manager(
+    repo_root: str, chat_memory_sink: ChatMemorySink | None = None
+) -> WorkspaceManager:
     registry = WorkspaceRegistry(workspace_registry_path(repo_root))
     config = RagConfig.from_env(os.environ)
     coordinator = None
