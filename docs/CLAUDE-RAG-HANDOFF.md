@@ -286,6 +286,100 @@ Verification: Python 231 passed; harness 128 passed; fake RAG workflow 21/21;
 pinned `falkordb/falkordb:v4.20.4` workflow 21/21; web 57 passed; oxlint exited
 0; `tsc -b`, `pnpm build`, and `pnpm build:runtime` passed.
 
+## Chat memory bridge result — done
+
+Chat turns now persist to SQLite as well as FalkorDB. FalkorDB stays the
+replayable transcript; SQLite is a searchable archive beside it.
+
+`ChatMemoryStore` (`python/kb_core_ui/memory/chat_store.py`) owns a new
+`chat_memories` table in the same `memory.db` file the global memory store
+uses. It is a second table, not a widened one: `memories` is a byte-level
+cross-language contract with Go's `internal/memory/store.go`, so its columns
+were not touched and no new code reads or writes it. `chat_memories` adds the
+`workspace_id`, `thread_id`, `turn_id`, and `seq` columns that scoping needs,
+and every query in the store filters by `workspace_id`. Search reuses the
+global store's embedding conventions, including `MIN_SCORE = 0.07` and skipping
+rows whose recorded embedder name differs from the live embedder's.
+
+`ChatMemorySink` (`python/kb_core_ui/rag/chat_memory.py`) is the seam between
+chat and the archive. `NullChatMemorySink` is the default, so every existing
+caller keeps working unchanged. `SyncChatMemorySink` writes through to the
+store and collects failures rather than raising them. `ThreadedChatMemorySink`
+wraps the sync sink on one worker thread, because embedding a turn can be an
+HTTP call with a 30s timeout and that must not sit on the thread of a chat
+request that already produced its answer. Its work is a single FIFO queue, so a
+delete queued after a write is applied after that write and a queued write can
+never resurrect a deleted thread. Deletes wait for their own queue item,
+bounded, so a dead worker degrades into a late delete rather than a hung
+request. A full queue drops the oldest pending write and says so.
+
+A chat memory write never blocks a chat response and never turns a successful
+turn into a failure. `ChatManager` records the turn after the history write on
+both the complete and the streaming path, and a cancelled stream records
+nothing. Archive failures ride out on the existing `errors` list in the frozen
+T11 payload, drained once rather than repeated on every later turn, and a sink
+that raises is caught, logged to `sys.stderr`, and degraded. The wire shape did
+not change: `errors` is still a list of strings and `error` is still a string.
+
+Three routes hang off the existing single `handle_rag_workspaces` dispatcher,
+in its path table rather than the mux: `GET /api/rag/workspaces/{id}/memory`
+(optional `?thread=`), `GET .../memory/search?q=&top=`, and `DELETE
+.../memory` (optional `?thread=`). Each passes `workspace_id` to the store,
+which scopes its own SQL by it, and each resolves the workspace through the
+registry first so an unknown workspace 404s instead of reading as an empty
+archive. The routes only exist when a chat memory store was opened, so with
+GraphRAG disabled they 404 with the rest of the RAG surface.
+
+`WorkspaceManager.delete_workspace` is a correction to the design doc, which
+claimed the archive was already reached through `cleanup_workspace`. It was
+not. That method marked the workspace deleting, dropped the graph, and removed
+the registry entry -- the archive lives outside the graph, so dropping the
+graph never reached it, and a deleted workspace left its turns searchable. It
+now cascades to the sink, and a broken archive cannot block the delete.
+
+The web surface adds `listChatMemories`, `searchChatMemories`, and
+`deleteChatMemories` to `web/src/api/workspaces.ts` and a workspace-scoped
+section to the Memory page. New JSON keys are snake_case (`created_at`,
+`workspace_id`, `thread_id`, `turn_id`, `seq`); the global memory surface's
+`createdAt` is a separate frozen shape and was left alone. The section hides
+itself when no workspace is reachable, so the page is unchanged with GraphRAG
+disabled.
+
+`chat_memory_persistence` is a new required harness stage. It ingests one
+fixture repo per tenant into `chatmem-alpha` and `chatmem-beta`, chats in each
+over HTTP, then checks the alpha turn was archived under alpha, is searchable
+there, that no hit crosses a workspace, and that deleting the alpha workspace
+through `WorkspaceManager` leaves zero archived alpha rows while beta's stay.
+`REQUIRED_STAGES` is now 22 entries.
+
+**Recall is not implemented.** The archive is write-only. Nothing reads
+`chat_memories` back into a prompt, nothing unions it with `memories`, and
+turns persisted before this work were not migrated.
+
+Verification: Python 283 passed; `RAG_ENABLE=false` isolation suite 9 passed;
+harness 127 passed with one unrelated flake in the Go-vs-Go REST selftest
+(`bots-run-unknown-bot` connection reset on Windows, passes in isolation, does
+not touch RAG); fake RAG workflow 22/22; pinned `falkordb/falkordb:v4.20.4`
+workflow 22/22; web 62 passed; oxlint exited 0; `pnpm build` passed.
+
+Live pass: this repo has no browser automation, so the DOM was not driven and
+the rendered Memory page was not visually confirmed. What was exercised is the
+real `kb-core-ui serve` process -- CLI wiring, `ThreadedChatMemorySink`, built
+`web/dist`, pinned FalkorDB -- driven over the exact HTTP calls the UI makes.
+A chat in `live-alpha` answered with an empty `errors` list and appeared in
+that workspace's archive with the question as its title and the answer as its
+body; searching alpha returned it and searching beta for the same term returned
+nothing; deleting the chat thread emptied alpha's archive and left beta's;
+deleting the beta workspace 404'd its memory route and left zero
+`chat_memories` rows; the global memory list was unchanged throughout and the
+`memories` table kept its nine Go-contract columns. Every response body and the
+built bundle were scanned for `falkor://`, the FalkorDB host, credential, and
+provider-key strings and were clean. One observed limit, not a defect: with the
+`fake` hashing embedder a single-word query ("pelican") scores under
+`MIN_SCORE` and returns nothing, while two or more words ("pelican records",
+0.157) match. That is the fake embedder's behavior and it matches the global
+memory surface.
+
 ## Non-Negotiable Workflow
 
 For every remaining task:
