@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 
+from kb_core_ui.memory import ChatMemoryStore
 from kb_core_ui.rag import (
     ChatHistoryStore,
     ChatManager,
@@ -18,6 +19,7 @@ from kb_core_ui.rag import (
     FakeChatThreadAdapter,
     RagConfig,
     SearchCandidate,
+    SyncChatMemorySink,
     WorkspaceRegistry,
 )
 from kb_core_ui.server import Server
@@ -86,18 +88,26 @@ def _app(tmp_path):
             FakeChatThreadAdapter(adapter.workspace_id, backend=backend), config=config
         )
 
+    # One store and one sink for both workspaces: if a row were not scoped,
+    # alpha's turns would surface in beta's search here.
+    chat_memory = ChatMemoryStore(str(tmp_path / "memory.db"))
     chat_manager = ChatManager(
         registry,
         config,
         adapter_factory=_ScopedAdapter,
         history_store_factory=history_store_factory,
+        chat_memory_sink=SyncChatMemorySink(chat_memory),
     )
     store = Store(str(tmp_path / "graph.db"))
     workspace_manager = type("WM", (), {"registry": registry, "config": config})()
     app = Server(
-        store, str(tmp_path), workspace_manager=workspace_manager, chat_manager=chat_manager
+        store,
+        str(tmp_path),
+        workspace_manager=workspace_manager,
+        chat_manager=chat_manager,
+        chat_memory=chat_memory,
     )
-    return app, store
+    return app, store, chat_memory
 
 
 def _ask(app, workspace_id: str, **body):
@@ -111,7 +121,7 @@ def _ask(app, workspace_id: str, **body):
 
 
 def test_an_answer_carries_only_its_own_workspaces_evidence(tmp_path):
-    app, store = _app(tmp_path)
+    app, store, chat_memory = _app(tmp_path)
     try:
         status, answer, _ = _ask(app, "beta")
         assert status == 200
@@ -119,22 +129,24 @@ def test_an_answer_carries_only_its_own_workspaces_evidence(tmp_path):
         assert answer["workspace_id"] == "beta"
         assert "alpha" not in json.dumps(answer)
     finally:
+        chat_memory.close()
         store.close()
 
 
 def test_a_foreign_source_id_is_rejected_rather_than_queried(tmp_path):
-    app, store = _app(tmp_path)
+    app, store, chat_memory = _app(tmp_path)
     try:
         status, answer, _ = _ask(app, "beta", allowed_source_ids=["alpha-repo"])
         assert status == 200
         assert any("rejected_source_ids" in error for error in answer["errors"])
         assert all(item["source_id"] != "alpha-repo" for item in answer["context"])
     finally:
+        chat_memory.close()
         store.close()
 
 
 def test_a_query_id_cannot_be_read_from_another_workspace(tmp_path):
-    app, store = _app(tmp_path)
+    app, store, chat_memory = _app(tmp_path)
     try:
         query_id = _ask(app, "alpha")[1]["query_id"]
         own = request(
@@ -150,11 +162,12 @@ def test_a_query_id_cannot_be_read_from_another_workspace(tmp_path):
         )
         assert explain[0] == 404
     finally:
+        chat_memory.close()
         store.close()
 
 
 def test_the_same_thread_id_in_two_workspaces_keeps_two_histories(tmp_path):
-    app, store = _app(tmp_path)
+    app, store, chat_memory = _app(tmp_path)
     try:
         _ask(app, "alpha", thread_id="shared", query="alpha question")
         _ask(app, "beta", thread_id="shared", query="beta question")
@@ -168,15 +181,68 @@ def test_the_same_thread_id_in_two_workspaces_keeps_two_histories(tmp_path):
         assert request(app, "DELETE", "/api/rag/workspaces/alpha/chat/threads/shared")[0] == 200
         assert request(app, "GET", "/api/rag/workspaces/beta/chat/threads/shared")[1]["turns"]
     finally:
+        chat_memory.close()
         store.close()
 
 
 def test_an_unknown_workspace_is_refused_before_any_retrieval(tmp_path):
-    app, store = _app(tmp_path)
+    app, store, chat_memory = _app(tmp_path)
     try:
         assert _ask(app, "gamma")[0] == 404
         assert request(app, "GET", "/api/rag/workspaces/gamma/chat/threads/shared")[0] == 404
     finally:
+        chat_memory.close()
+        store.close()
+
+
+def test_a_chat_turn_becomes_a_searchable_memory_in_its_own_workspace(tmp_path):
+    app, store, chat_memory = _app(tmp_path)
+    try:
+        _ask(app, "alpha", thread_id="t1", query="what owns the graph records")
+
+        status, body, _ = request(
+            app, "GET", "/api/rag/workspaces/alpha/memory/search?q=graph%20records&top=10"
+        )
+
+        assert status == 200
+        assert body["hits"]
+        assert {hit["entry"]["workspace_id"] for hit in body["hits"]} == {"alpha"}
+    finally:
+        chat_memory.close()
+        store.close()
+
+
+def test_one_workspaces_memory_search_never_returns_the_others_turn(tmp_path):
+    app, store, chat_memory = _app(tmp_path)
+    try:
+        _ask(app, "alpha", thread_id="t1", query="alpha question about graph records")
+        _ask(app, "beta", thread_id="t1", query="beta question about graph records")
+
+        alpha = request(app, "GET", "/api/rag/workspaces/alpha/memory")[1]
+        beta = request(app, "GET", "/api/rag/workspaces/beta/memory")[1]
+
+        assert [entry["title"] for entry in alpha["entries"]] == [
+            "alpha question about graph records"
+        ]
+        assert "beta question" not in json.dumps(alpha)
+        assert "alpha question" not in json.dumps(beta)
+    finally:
+        chat_memory.close()
+        store.close()
+
+
+def test_deleting_a_thread_clears_its_memories_and_leaves_the_other_workspace(tmp_path):
+    app, store, chat_memory = _app(tmp_path)
+    try:
+        _ask(app, "alpha", thread_id="shared", query="alpha question")
+        _ask(app, "beta", thread_id="shared", query="beta question")
+
+        assert request(app, "DELETE", "/api/rag/workspaces/alpha/chat/threads/shared")[0] == 200
+
+        assert chat_memory.count("alpha") == 0
+        assert chat_memory.count("beta") == 1
+    finally:
+        chat_memory.close()
         store.close()
 
 
@@ -198,6 +264,8 @@ def test_disabled_rag_keeps_the_base_ui_and_hides_every_rag_route(tmp_path):
             "/api/rag/workspaces/alpha/chat",
             "/api/rag/workspaces/alpha/context",
             "/api/rag/agent",
+            "/api/rag/workspaces/alpha/memory",
+            "/api/rag/workspaces/alpha/memory/search?q=x",
         ):
             assert request(app, "GET", path)[0] == 404, path
     finally:
