@@ -7,9 +7,17 @@ server, and they do not exist at all when GraphRAG is off.
 from __future__ import annotations
 
 import json
+import time
 
 from kb_core_ui.memory import ChatMemoryStore
-from kb_core_ui.rag import ChatManager, RagConfig, SyncChatMemorySink, WorkspaceRegistry
+from kb_core_ui.rag import (
+    ChatManager,
+    RagConfig,
+    SyncChatMemorySink,
+    ThreadedChatMemorySink,
+    WorkspaceRegistry,
+)
+from kb_core_ui.rag.persistence import PersistedTurn
 from kb_core_ui.server import Server
 from kb_core_ui.store import Store
 
@@ -45,6 +53,27 @@ def _app(tmp_path):
         chat_memory=chat_memory,
     )
     return app, store, chat_memory
+
+
+def _threaded_app(tmp_path):
+    """A server whose archive writes go through the real background sink.
+
+    The delay stands in for what an archive write actually costs -- embedding a
+    turn can be an HTTP call -- and sits outside the store's lock, exactly where
+    the embed call sits, so a delete arriving meanwhile is not merely blocked.
+    """
+
+    app, store, memory = _app(tmp_path)
+    real_add = memory.add
+
+    def slow_add(*args, **kwargs):
+        time.sleep(0.3)
+        return real_add(*args, **kwargs)
+
+    memory.add = slow_add
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(memory))
+    app.chat_memory_sink = sink
+    return app, store, memory, sink
 
 
 def test_listing_returns_only_this_workspaces_entries(tmp_path):
@@ -112,6 +141,36 @@ def test_deleting_without_a_thread_empties_the_workspace_only(tmp_path):
         assert memory.count("alpha") == 0
         assert memory.count("beta") == 1
     finally:
+        memory.close()
+        store.close()
+
+
+def test_a_delete_cannot_race_ahead_of_a_queued_write(tmp_path):
+    """The threaded sink holds writes that have not landed yet. A delete that
+    goes straight to the store steps over that queue, and the write behind it
+    then resurrects the rows the caller just asked to remove."""
+
+    app, store, memory, sink = _threaded_app(tmp_path)
+    try:
+        sink.record(
+            PersistedTurn(
+                turn_id="turn-late",
+                thread_id="t1",
+                workspace_id="alpha",
+                seq=2,
+                query="a late question",
+                response={"answer": "a late answer", "citations": []},
+                created_at="2026-08-31T00:00:00Z",
+            )
+        )
+
+        status, _, _ = request(app, "DELETE", "/api/rag/workspaces/alpha/memory")
+
+        assert status == 200
+        sink.flush(timeout=5.0)
+        assert memory.count("alpha") == 0
+    finally:
+        sink.close()
         memory.close()
         store.close()
 

@@ -48,9 +48,9 @@ def compose_text(answer: str, citations: Iterable[dict[str, Any]]) -> str:
 class ChatMemorySink(Protocol):
     def record(self, turn: "PersistedTurn") -> None: ...
 
-    def delete_thread(self, workspace_id: str, thread_id: str) -> None: ...
+    def delete_thread(self, workspace_id: str, thread_id: str) -> int: ...
 
-    def delete_workspace(self, workspace_id: str) -> None: ...
+    def delete_workspace(self, workspace_id: str) -> int: ...
 
     def drain_errors(self, workspace_id: str) -> list[str]: ...
 
@@ -64,11 +64,11 @@ class NullChatMemorySink:
     def record(self, turn: "PersistedTurn") -> None:
         return None
 
-    def delete_thread(self, workspace_id: str, thread_id: str) -> None:
-        return None
+    def delete_thread(self, workspace_id: str, thread_id: str) -> int:
+        return 0
 
-    def delete_workspace(self, workspace_id: str) -> None:
-        return None
+    def delete_workspace(self, workspace_id: str) -> int:
+        return 0
 
     def drain_errors(self, workspace_id: str) -> list[str]:
         return []
@@ -112,17 +112,19 @@ class SyncChatMemorySink:
         except Exception as exc:  # best-effort archive; never fail the turn
             self._failed(turn.workspace_id, "record", exc)
 
-    def delete_thread(self, workspace_id: str, thread_id: str) -> None:
+    def delete_thread(self, workspace_id: str, thread_id: str) -> int:
         try:
-            self._store.delete_thread(workspace_id, thread_id)
+            return self._store.delete_thread(workspace_id, thread_id)
         except Exception as exc:  # best-effort archive; never fail the delete
             self._failed(workspace_id, "delete_thread", exc)
+            return 0
 
-    def delete_workspace(self, workspace_id: str) -> None:
+    def delete_workspace(self, workspace_id: str) -> int:
         try:
-            self._store.delete_workspace(workspace_id)
+            return self._store.delete_workspace(workspace_id)
         except Exception as exc:  # best-effort archive; never fail the delete
             self._failed(workspace_id, "delete_workspace", exc)
+            return 0
 
     def drain_errors(self, workspace_id: str) -> list[str]:
         with self._errors_lock:
@@ -145,12 +147,19 @@ class _Record(_Work):
 
 
 @dataclass
-class _DeleteThread(_Work):
+class _Delete(_Work):
+    # How many rows the worker removed, carried back to the caller waiting on
+    # ``done`` so an HTTP delete can report a count without touching the store.
+    deleted: int = 0
+
+
+@dataclass
+class _DeleteThread(_Delete):
     thread_id: str = ""
 
 
 @dataclass
-class _DeleteWorkspace(_Work):
+class _DeleteWorkspace(_Delete):
     pass
 
 
@@ -185,9 +194,11 @@ class ThreadedChatMemorySink:
                     if isinstance(item, _Record):
                         self._inner.record(item.turn)
                     elif isinstance(item, _DeleteThread):
-                        self._inner.delete_thread(item.workspace_id, item.thread_id)
+                        item.deleted = self._inner.delete_thread(
+                            item.workspace_id, item.thread_id
+                        )
                     elif isinstance(item, _DeleteWorkspace):
-                        self._inner.delete_workspace(item.workspace_id)
+                        item.deleted = self._inner.delete_workspace(item.workspace_id)
             finally:
                 if item is not None:
                     item.done.set()
@@ -223,15 +234,17 @@ class ThreadedChatMemorySink:
     def record(self, turn: "PersistedTurn") -> None:
         self._submit(_Record(workspace_id=turn.workspace_id, turn=turn))
 
-    def delete_thread(self, workspace_id: str, thread_id: str) -> None:
+    def delete_thread(self, workspace_id: str, thread_id: str) -> int:
         item = _DeleteThread(workspace_id=workspace_id, thread_id=thread_id)
         self._submit(item)
         item.done.wait(self._timeout)
+        return item.deleted
 
-    def delete_workspace(self, workspace_id: str) -> None:
+    def delete_workspace(self, workspace_id: str) -> int:
         item = _DeleteWorkspace(workspace_id=workspace_id)
         self._submit(item)
         item.done.wait(self._timeout)
+        return item.deleted
 
     def flush(self, timeout: float = 5.0) -> None:
         marker = _Work()

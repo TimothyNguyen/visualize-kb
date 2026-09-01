@@ -73,6 +73,7 @@ class Server:
         workspace_manager: object | None = None,
         chat_manager: object | None = None,
         chat_memory: object | None = None,
+        chat_memory_sink: object | None = None,
     ) -> None:
         self.store = store
         self.repo_root = repo_root
@@ -82,6 +83,7 @@ class Server:
         self.workspace_manager = workspace_manager
         self.chat_manager = chat_manager
         self.chat_memory = chat_memory
+        self.chat_memory_sink = chat_memory_sink
         self.mux = Mux()
         # Go's *sql.DB is a connection pool safe for concurrent use; a
         # sqlite3.Connection is not. Requests arrive on separate threads, so
@@ -608,11 +610,17 @@ class Server:
             )
 
         if leaf == "" and req.method == "DELETE":
+            # Through the sink when there is one, so this delete queues behind
+            # archive writes that have not landed yet. Deleting on the store
+            # directly would step over that queue and let a pending write
+            # resurrect the rows the caller just asked to remove. With no sink
+            # there is no queue, and the store is the only thing to talk to.
+            target = self.chat_memory_sink or memory
             thread_id = req.get_query("thread")
             if thread_id:
-                deleted = memory.delete_thread(workspace_id, thread_id)
+                deleted = target.delete_thread(workspace_id, thread_id)
             else:
-                deleted = memory.delete_workspace(workspace_id)
+                deleted = target.delete_workspace(workspace_id)
             return write_json({"workspace_id": workspace_id, "deleted": deleted})
 
         if leaf == "search" and req.method == "GET":

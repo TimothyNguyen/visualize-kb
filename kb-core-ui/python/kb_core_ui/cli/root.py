@@ -501,6 +501,7 @@ def _run_serve(cmd: Command, values: dict, args: list[str]) -> None:
             workspace_manager,
             chat_manager,
             chat_memory,
+            chat_memory_sink,
         )
         display_host = "localhost" if values["host"] in ("127.0.0.1", "localhost") else values["host"]
         url = f"http://{display_host}:{values['port']}"

@@ -1751,6 +1751,7 @@ def execute_rag_workflow(
             workspace_manager=manager,
             chat_manager=chat,
             chat_memory=chat_memory,
+            chat_memory_sink=sink,
         )
 
         def call(method: str, url: str, payload: dict[str, Any] | None = None):
