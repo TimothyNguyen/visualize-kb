@@ -11,7 +11,10 @@ a failed embedding.
 
 from __future__ import annotations
 
+import queue
 import sys
+import threading
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterable, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -123,3 +126,120 @@ class SyncChatMemorySink:
     def close(self) -> None:
         # The store's owner opened it and closes it; a sink is only a writer.
         return None
+
+
+@dataclass
+class _Work:
+    done: threading.Event = field(default_factory=threading.Event)
+
+
+@dataclass
+class _Record(_Work):
+    turn: object = None
+
+
+@dataclass
+class _DeleteThread(_Work):
+    workspace_id: str = ""
+    thread_id: str = ""
+
+
+@dataclass
+class _DeleteWorkspace(_Work):
+    workspace_id: str = ""
+
+
+class ThreadedChatMemorySink:
+    """Runs a SyncChatMemorySink on one worker thread.
+
+    Embedding a turn can be an HTTP call with a 30s timeout. That must not sit
+    on the thread of a chat request that has already produced its answer.
+
+    Work is a single FIFO queue, so a delete queued after a write is applied
+    after that write -- a queued write can never resurrect a deleted thread.
+    Deletes wait for their own item to be processed, bounded by `timeout`, so a
+    dead worker degrades into a late delete rather than a hung request.
+    """
+
+    def __init__(self, inner: SyncChatMemorySink, *, maxsize: int = 256, timeout: float = 5.0):
+        self._inner = inner
+        self._timeout = timeout
+        self._queue: queue.Queue = queue.Queue(maxsize=maxsize)
+        self._gate = threading.Lock()
+        self._closed = False
+        self._thread = threading.Thread(target=self._run, name="chat-memory-sink", daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        while True:
+            item = self._queue.get()
+            try:
+                if item is None:
+                    return
+                with self._gate:
+                    if isinstance(item, _Record):
+                        self._inner.record(item.turn)
+                    elif isinstance(item, _DeleteThread):
+                        self._inner.delete_thread(item.workspace_id, item.thread_id)
+                    elif isinstance(item, _DeleteWorkspace):
+                        self._inner.delete_workspace(item.workspace_id)
+            finally:
+                if item is not None:
+                    item.done.set()
+                self._queue.task_done()
+
+    def _submit(self, item: _Work) -> None:
+        if self._closed:
+            return
+        try:
+            self._queue.put_nowait(item)
+        except queue.Full:
+            try:
+                dropped = self._queue.get_nowait()
+                dropped.done.set()
+                self._queue.task_done()
+                self._inner.note_error("queue full, dropped the oldest pending write")
+            except queue.Empty:
+                pass
+            try:
+                self._queue.put_nowait(item)
+            except queue.Full:
+                item.done.set()
+                self._inner.note_error("queue full, dropped a write")
+
+    def record(self, turn: "PersistedTurn") -> None:
+        self._submit(_Record(turn=turn))
+
+    def delete_thread(self, workspace_id: str, thread_id: str) -> None:
+        item = _DeleteThread(workspace_id=workspace_id, thread_id=thread_id)
+        self._submit(item)
+        item.done.wait(self._timeout)
+
+    def delete_workspace(self, workspace_id: str) -> None:
+        item = _DeleteWorkspace(workspace_id=workspace_id)
+        self._submit(item)
+        item.done.wait(self._timeout)
+
+    def flush(self, timeout: float = 5.0) -> None:
+        marker = _Work()
+        self._submit(marker)
+        marker.done.wait(timeout)
+
+    def pause(self) -> None:
+        """Test-only: hold the worker still so the queue can be filled."""
+
+        self._gate.acquire()
+
+    def resume(self) -> None:
+        if self._gate.locked():
+            self._gate.release()
+
+    def drain_errors(self) -> list[str]:
+        return self._inner.drain_errors()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._queue.put(None)
+        self._thread.join(timeout=self._timeout)

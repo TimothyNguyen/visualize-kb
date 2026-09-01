@@ -12,6 +12,7 @@ from kb_core_ui.memory import ChatMemoryStore
 from kb_core_ui.rag.chat_memory import (
     NullChatMemorySink,
     SyncChatMemorySink,
+    ThreadedChatMemorySink,
     compose_text,
     compose_title,
 )
@@ -155,6 +156,78 @@ def test_a_broken_store_does_not_raise_on_delete(store):
     sink.delete_workspace("alpha")
 
     assert len(sink.drain_errors()) == 2
+
+
+def test_a_recorded_turn_lands_in_the_store_without_the_caller_waiting(store):
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(store))
+    try:
+        sink.record(_turn())
+        sink.flush(timeout=5.0)
+    finally:
+        sink.close()
+
+    assert store.count("alpha") == 1
+
+
+def test_a_delete_queued_after_a_write_wins(store):
+    """FIFO ordering is the whole guarantee: a queued write must not land after
+    the delete that was meant to remove it."""
+
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(store))
+    try:
+        sink.record(_turn(turn_id="a1"))
+        sink.record(_turn(turn_id="a2"))
+        sink.delete_workspace("alpha")
+    finally:
+        sink.close()
+
+    assert store.count("alpha") == 0
+
+
+def test_deleting_a_thread_waits_for_the_worker(store):
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(store))
+    try:
+        sink.record(_turn(turn_id="a1", thread_id="drop"))
+        sink.delete_thread("alpha", "drop")
+
+        assert store.count("alpha") == 0
+    finally:
+        sink.close()
+
+
+def test_store_errors_from_the_worker_surface_on_a_later_drain(store):
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(store))
+    try:
+        store.close()
+        sink.record(_turn())
+        sink.flush(timeout=5.0)
+
+        errors = sink.drain_errors()
+    finally:
+        sink.close()
+
+    assert any(error.startswith("chat_memory:") for error in errors)
+
+
+def test_a_full_queue_drops_the_oldest_and_says_so(store):
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(store), maxsize=1)
+    sink.pause()
+    try:
+        sink.record(_turn(turn_id="a1"))
+        sink.record(_turn(turn_id="a2"))
+        sink.record(_turn(turn_id="a3"))
+    finally:
+        sink.resume()
+        sink.close()
+
+    assert any("dropped" in error for error in sink.drain_errors())
+    assert store.count("alpha") <= 2
+
+
+def test_closing_twice_is_safe(store):
+    sink = ThreadedChatMemorySink(SyncChatMemorySink(store))
+    sink.close()
+    sink.close()
 
 
 def test_the_null_sink_accepts_everything_and_reports_nothing():
