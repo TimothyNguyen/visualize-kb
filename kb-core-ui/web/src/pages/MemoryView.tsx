@@ -180,6 +180,8 @@ function ChatMemorySection() {
   const [workspaceId, setWorkspaceId] = useState("")
   const [query, setQuery] = useState("")
   const [entries, setEntries] = useState<ChatMemoryEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -209,10 +211,17 @@ function ChatMemorySection() {
         : listChatMemories(workspaceId)
       pending
         .then((items) => {
-          if (!cancelled) setEntries(items)
+          if (cancelled) return
+          setEntries(items)
+          setError(null)
         })
-        .catch(() => {
-          if (!cancelled) setEntries([])
+        .catch((err: unknown) => {
+          if (cancelled) return
+          setEntries([])
+          setError(err instanceof Error ? err.message : "failed to load chat memory")
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
         })
     }, SEARCH_DEBOUNCE_MS)
     return () => {
@@ -222,8 +231,14 @@ function ChatMemorySection() {
   }, [workspaceId, query, refreshKey])
 
   async function clearThread(threadId: string) {
-    await deleteChatMemories(workspaceId, threadId)
-    setRefreshKey((k) => k + 1)
+    setError(null)
+    try {
+      await deleteChatMemories(workspaceId, threadId)
+      setLoading(true)
+      setRefreshKey((k) => k + 1)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "failed to clear thread")
+    }
   }
 
   if (unavailable || workspaces.length === 0) {
@@ -245,13 +260,19 @@ function ChatMemorySection() {
           type="search"
           value={query}
           placeholder="Search this workspace's chat history…"
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setLoading(true)
+            setQuery(e.target.value)
+          }}
         />
         <select
           className="memory-kind-select"
           aria-label="Workspace"
           value={workspaceId}
-          onChange={(e) => setWorkspaceId(e.target.value)}
+          onChange={(e) => {
+            setLoading(true)
+            setWorkspaceId(e.target.value)
+          }}
         >
           {workspaces.map((workspace) => (
             <option key={workspace.id} value={workspace.id}>
@@ -261,7 +282,11 @@ function ChatMemorySection() {
         </select>
       </form>
 
-      {entries.length === 0 ? (
+      {error && <div className="memory-error">{error}</div>}
+
+      {loading ? (
+        <div className="memory-empty">Loading…</div>
+      ) : entries.length === 0 ? (
         <div className="memory-empty">No chat turns archived yet.</div>
       ) : (
         <div className="memory-card-list">
