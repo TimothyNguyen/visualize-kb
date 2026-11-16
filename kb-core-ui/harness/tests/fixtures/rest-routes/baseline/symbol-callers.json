@@ -1,0 +1,31 @@
+{
+  "captured_at": "2026-08-28T19:05:20.628008+00:00",
+  "comparable": {
+    "body": [
+      {
+        "edge": {
+          "kind": "calls",
+          "source": "pkg/mathutil.go:Calculator.AddTo",
+          "target": "pkg/mathutil.go:Add"
+        },
+        "symbol": {
+          "endLine": 21,
+          "filePath": "pkg/mathutil.go",
+          "id": "pkg/mathutil.go:Calculator.AddTo",
+          "kind": "method",
+          "name": "AddTo",
+          "startLine": 18
+        }
+      }
+    ],
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "rest-routes",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "symbol-callers"
+}

@@ -1,0 +1,96 @@
+{
+  "captured_at": "2026-08-28T00:32:59.668386+00:00",
+  "comparable": {
+    "body": {
+      "edges": [
+        {
+          "kind": "contains",
+          "source": "mathutil.ts:Adder",
+          "target": "mathutil.ts:Adder.addTo"
+        },
+        {
+          "kind": "contains",
+          "source": "mathutil.ts:Calculator",
+          "target": "mathutil.ts:Calculator.total"
+        },
+        {
+          "kind": "contains",
+          "source": "mathutil.ts:Calculator",
+          "target": "mathutil.ts:Calculator.addTo"
+        },
+        {
+          "kind": "calls",
+          "source": "mathutil.ts:Calculator.addTo",
+          "target": "mathutil.ts:add"
+        }
+      ],
+      "nodes": [
+        {
+          "endLine": 2,
+          "filePath": "mathutil.ts",
+          "id": "mathutil.ts:DEFAULT_START",
+          "kind": "const",
+          "name": "DEFAULT_START",
+          "startLine": 2
+        },
+        {
+          "endLine": 7,
+          "filePath": "mathutil.ts",
+          "id": "mathutil.ts:add",
+          "kind": "function",
+          "name": "add",
+          "startLine": 5
+        },
+        {
+          "endLine": 12,
+          "filePath": "mathutil.ts",
+          "id": "mathutil.ts:Adder",
+          "kind": "interface",
+          "name": "Adder",
+          "startLine": 10
+        },
+        {
+          "endLine": 11,
+          "filePath": "mathutil.ts",
+          "id": "mathutil.ts:Adder.addTo",
+          "kind": "method",
+          "name": "addTo",
+          "startLine": 11
+        },
+        {
+          "endLine": 22,
+          "filePath": "mathutil.ts",
+          "id": "mathutil.ts:Calculator",
+          "kind": "class",
+          "name": "Calculator",
+          "startLine": 15
+        },
+        {
+          "endLine": 16,
+          "filePath": "mathutil.ts",
+          "id": "mathutil.ts:Calculator.total",
+          "kind": "variable",
+          "name": "total",
+          "startLine": 16
+        },
+        {
+          "endLine": 21,
+          "filePath": "mathutil.ts",
+          "id": "mathutil.ts:Calculator.addTo",
+          "kind": "method",
+          "name": "addTo",
+          "startLine": 18
+        }
+      ]
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "typescript-basics",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "graph"
+}

@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:43.269602+00:00",
+  "comparable": {
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "Parse a repo into the code graph and exit (no server)\n\nUsage:\n  kb-core-ui parse [path] [flags]\n\nFlags:\n      --db string   path to the SQLite graph DB (default: <repo>/.kb-core-ui/graph.db)\n  -h, --help        help for parse\n"
+  },
+  "engine": "go",
+  "fixture": "cli-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "help-parse"
+}

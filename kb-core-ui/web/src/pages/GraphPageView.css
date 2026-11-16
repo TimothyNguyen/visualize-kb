@@ -14,6 +14,15 @@
   flex-shrink: 0;
 }
 
+.graph-load-full {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--accent-strong);
+  background: var(--accent-bg);
+  cursor: pointer;
+}
+
 .graph-page-title {
   font-size: 14px;
   margin: 0;

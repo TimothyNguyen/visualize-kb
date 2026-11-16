@@ -1,0 +1,22 @@
+{
+  "captured_at": "2026-08-28T01:34:54.388786+00:00",
+  "comparable": {
+    "result": {
+      "content": [
+        {
+          "text": "no symbol with id \"nope\"",
+          "type": "text"
+        }
+      ],
+      "isError": true
+    }
+  },
+  "engine": "go",
+  "fixture": "mcp-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "get-symbol-not-found"
+}

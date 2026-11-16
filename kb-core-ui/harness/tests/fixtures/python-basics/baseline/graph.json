@@ -1,0 +1,75 @@
+{
+  "captured_at": "2026-08-28T00:32:56.815212+00:00",
+  "comparable": {
+    "body": {
+      "edges": [
+        {
+          "kind": "contains",
+          "source": "mathutil.py:Calculator",
+          "target": "mathutil.py:Calculator.__init__"
+        },
+        {
+          "kind": "contains",
+          "source": "mathutil.py:Calculator",
+          "target": "mathutil.py:Calculator.add_to"
+        },
+        {
+          "kind": "calls",
+          "source": "mathutil.py:Calculator.add_to",
+          "target": "mathutil.py:add"
+        }
+      ],
+      "nodes": [
+        {
+          "endLine": 3,
+          "filePath": "mathutil.py",
+          "id": "mathutil.py:DEFAULT_START",
+          "kind": "const",
+          "name": "DEFAULT_START",
+          "startLine": 3
+        },
+        {
+          "endLine": 8,
+          "filePath": "mathutil.py",
+          "id": "mathutil.py:add",
+          "kind": "function",
+          "name": "add",
+          "startLine": 6
+        },
+        {
+          "endLine": 20,
+          "filePath": "mathutil.py",
+          "id": "mathutil.py:Calculator",
+          "kind": "class",
+          "name": "Calculator",
+          "startLine": 11
+        },
+        {
+          "endLine": 15,
+          "filePath": "mathutil.py",
+          "id": "mathutil.py:Calculator.__init__",
+          "kind": "method",
+          "name": "__init__",
+          "startLine": 14
+        },
+        {
+          "endLine": 20,
+          "filePath": "mathutil.py",
+          "id": "mathutil.py:Calculator.add_to",
+          "kind": "method",
+          "name": "add_to",
+          "startLine": 17
+        }
+      ]
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "python-basics",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "graph"
+}

@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:42.972635+00:00",
+  "comparable": {
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "kb-core-ui parses a source repo (Go, TypeScript, JavaScript, Python) into a\nsymbol/call graph — functions, classes, methods, consts, vars, with types,\ncall edges, and file:line references — stored locally in SQLite under\n.kb-core-ui/. It's a companion for both humans (a visual graph explorer) and\nAI agents (an MCP server exposing search/get_symbol/get_callers/get_callees\ntools) so debugging AI-written code means tracing the graph instead of\nre-reading the whole codebase.\n\nUsage:\n  kb-core-ui [command]\n\nAvailable Commands:\n  bot         Run an AI bot (see bots/README.md for the full list)\n  completion  Generate the autocompletion script for the specified shell\n  help        Help about any command\n  mcp         Parse a repo and run an MCP server over stdio for AI agents\n  memory      Vector memory: store & semantically search codebase rules, lessons, business logic\n  parse       Parse a repo into the code graph and exit (no server)\n  serve       Parse a repo and serve the graph API + web visualizer\n\nFlags:\n  -h, --help   help for kb-core-ui\n\nUse \"kb-core-ui [command] --help\" for more information about a command.\n"
+  },
+  "engine": "go",
+  "fixture": "cli-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "no-args"
+}

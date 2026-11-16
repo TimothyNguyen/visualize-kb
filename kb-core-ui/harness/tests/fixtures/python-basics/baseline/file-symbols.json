@@ -1,0 +1,40 @@
+{
+  "captured_at": "2026-08-28T00:32:56.805451+00:00",
+  "comparable": {
+    "body": [
+      {
+        "endLine": 3,
+        "filePath": "mathutil.py",
+        "id": "mathutil.py:DEFAULT_START",
+        "kind": "const",
+        "name": "DEFAULT_START",
+        "startLine": 3
+      },
+      {
+        "endLine": 8,
+        "filePath": "mathutil.py",
+        "id": "mathutil.py:add",
+        "kind": "function",
+        "name": "add",
+        "startLine": 6
+      },
+      {
+        "endLine": 20,
+        "filePath": "mathutil.py",
+        "id": "mathutil.py:Calculator",
+        "kind": "class",
+        "name": "Calculator",
+        "startLine": 11
+      }
+    ],
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "python-basics",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "file-symbols"
+}

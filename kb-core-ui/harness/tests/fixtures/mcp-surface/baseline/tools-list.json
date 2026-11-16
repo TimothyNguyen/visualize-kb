@@ -1,0 +1,255 @@
+{
+  "captured_at": "2026-08-28T01:34:54.366379+00:00",
+  "comparable": {
+    "result": {
+      "tools": [
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "List what a symbol calls or references — trace execution forward from a function.",
+          "inputSchema": {
+            "properties": {
+              "id": {
+                "description": "Symbol id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "name": "get_callees"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "List what calls or references a symbol — trace execution backward to a function, e.g. to find every caller before changing its signature.",
+          "inputSchema": {
+            "properties": {
+              "id": {
+                "description": "Symbol id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "name": "get_callers"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "Read exact source lines from a file by line range — use this instead of reading the whole file once get_symbol/get_file_symbols gives you the line range you need.",
+          "inputSchema": {
+            "properties": {
+              "end": {
+                "description": "1-indexed end line, inclusive",
+                "type": "number"
+              },
+              "file": {
+                "description": "Repo-relative file path",
+                "type": "string"
+              },
+              "start": {
+                "description": "1-indexed start line, inclusive",
+                "type": "number"
+              }
+            },
+            "required": [
+              "file",
+              "start",
+              "end"
+            ],
+            "type": "object"
+          },
+          "name": "get_file_slice"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "List the top-level symbols (functions, classes, consts, vars) declared in one file, with their ids and line ranges — a table of contents for the file without reading it.",
+          "inputSchema": {
+            "properties": {
+              "path": {
+                "description": "Repo-relative file path",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          },
+          "name": "get_file_symbols"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "Get repo-wide counts: files, symbols, edges, and a per-language breakdown.",
+          "inputSchema": {
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "name": "get_stats"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "Get full detail for one symbol by id: signature, params, returns, doc comment, file path and line range. Use this before reading a file to see if the graph already answers the question.",
+          "inputSchema": {
+            "properties": {
+              "id": {
+                "description": "Symbol id, e.g. from search_symbol or get_file_symbols",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "name": "get_symbol"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "Get the repo's file tree as indexed by kb-core-ui.",
+          "inputSchema": {
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "name": "get_tree"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "Store a new lesson, rule, business-logic note, or overview in kb-core-ui's vector memory so it can be recalled later. Use this to persist something important learned during a task (e.g. a non-obvious rule, a bug's root cause) for future sessions.",
+          "inputSchema": {
+            "properties": {
+              "kind": {
+                "description": "rule, lesson, business, overview, or reference",
+                "type": "string"
+              },
+              "source": {
+                "description": "Where it came from (optional)",
+                "type": "string"
+              },
+              "text": {
+                "description": "The knowledge to remember",
+                "type": "string"
+              },
+              "title": {
+                "description": "Short title",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "title",
+              "text"
+            ],
+            "type": "object"
+          },
+          "name": "memory_add"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "Semantically search kb-core-ui's vector memory for the codebase RULES, LESSONS, business-logic notes, and overviews most relevant to a task. Call this before making changes to learn the project's primary rules and past lessons — it holds knowledge that is NOT in the code itself.",
+          "inputSchema": {
+            "properties": {
+              "kind": {
+                "description": "Optional filter: rule, lesson, business, overview, reference",
+                "type": "string"
+              },
+              "query": {
+                "description": "What you want relevant rules/lessons about, in natural language",
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "name": "memory_search"
+        },
+        {
+          "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+          },
+          "description": "Search the code graph for symbols (functions, methods, classes, consts, vars) by name substring. Use this instead of grepping files to find where something is declared.",
+          "inputSchema": {
+            "properties": {
+              "kind": {
+                "description": "Optional filter: module, package, class, interface, function, method, const, variable",
+                "type": "string"
+              },
+              "query": {
+                "description": "Substring to match against symbol names, case-insensitive",
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "type": "object"
+          },
+          "name": "search_symbol"
+        }
+      ]
+    }
+  },
+  "engine": "go",
+  "fixture": "mcp-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "tools-list"
+}

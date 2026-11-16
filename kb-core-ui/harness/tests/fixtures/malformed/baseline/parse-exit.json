@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-08-28T00:32:53.823841+00:00",
+  "comparable": {
+    "exit_code": 0,
+    "stdout": ""
+  },
+  "engine": "go",
+  "fixture": "malformed",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "parse-exit"
+}

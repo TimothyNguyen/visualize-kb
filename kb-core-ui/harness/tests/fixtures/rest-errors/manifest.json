@@ -1,0 +1,135 @@
+{
+  "name": "rest-errors",
+  "repo": "repo",
+  "operations": [
+    {
+      "id": "api-mux-not-found",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/files/symbols",
+      "capture": "status_text_body",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "file-symbols-unknown-file",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/files/nope.go/symbols",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "symbol-not-found",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/symbols/nope",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "subgraph-missing-symbol",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/graph/subgraph",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "subgraph-invalid-depth",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/graph/subgraph",
+      "params": {"symbol": "hello.go:Add", "depth": "abc"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "subgraph-symbol-not-found",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/graph/subgraph",
+      "params": {"symbol": "nope"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "source-missing-file",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/source",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "source-invalid-range",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/source",
+      "params": {"file": "hello.go", "start": "x", "end": "y"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "source-escape-root",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/source",
+      "params": {"file": "../../etc/passwd", "start": "1", "end": "2"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "source-file-not-found",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/source",
+      "params": {"file": "nope.go", "start": "1", "end": "2"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-invalid-kind",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/memory",
+      "params": {"kind": "bogus"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-add-malformed-json",
+      "kind": "rest",
+      "method": "POST",
+      "route": "/api/memory",
+      "raw_body": "{not json",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-add-missing-title",
+      "kind": "rest",
+      "method": "POST",
+      "route": "/api/memory",
+      "params": {"kind": "rule", "text": "x"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-add-invalid-kind",
+      "kind": "rest",
+      "method": "POST",
+      "route": "/api/memory",
+      "params": {"kind": "bogus", "title": "t", "text": "x"},
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-delete-absent",
+      "kind": "rest",
+      "method": "DELETE",
+      "route": "/api/memory/no-such-id",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:43.634729+00:00",
+  "comparable": {
+    "exit_code": 0,
+    "stderr": "",
+    "stdout": "kb-core-ui's vector memory holds non-code knowledge — primary codebase\nrules, lessons learned, business-logic/data-dependency notes, and what the\nsoftware does — as embeddings you can search semantically. It's the\ncounterpart to the code graph: the graph answers \"where does this code\nlive\", memory answers \"what do we know that isn't in the code\". Kept in\n<repo>/.kb-core-ui/memory.db, separate from the graph so re-indexing never\nwipes it.\n\nUsage:\n  kb-core-ui memory [command]\n\nAvailable Commands:\n  add         Add a memory entry\n  list        List memory entries (newest first)\n  rm          Remove a memory entry by id\n  search      Semantically search memory for the entries most relevant to a query\n\nFlags:\n  -h, --help   help for memory\n\nUse \"kb-core-ui memory [command] --help\" for more information about a command.\n"
+  },
+  "engine": "go",
+  "fixture": "cli-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "help-memory"
+}

@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:44.696048+00:00",
+  "comparable": {
+    "exit_code": 1,
+    "stderr": "Error: accepts at most 1 arg(s), received 2\nUsage:\n  kb-core-ui parse [path] [flags]\n\nFlags:\n      --db string   path to the SQLite graph DB (default: <repo>/.kb-core-ui/graph.db)\n  -h, --help        help for parse\n\nkb-core-ui: accepts at most 1 arg(s), received 2\n",
+    "stdout": ""
+  },
+  "engine": "go",
+  "fixture": "cli-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "parse-too-many-args"
+}

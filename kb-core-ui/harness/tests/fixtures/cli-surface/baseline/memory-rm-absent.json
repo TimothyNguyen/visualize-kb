@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:46.845318+00:00",
+  "comparable": {
+    "exit_code": 1,
+    "stderr": "Error: no memory with id \"no-such-id\"\nUsage:\n  kb-core-ui memory rm <id> [flags]\n\nFlags:\n  -h, --help          help for rm\n      --repo string   repo the memory belongs to (default \".\")\n\nkb-core-ui: no memory with id \"no-such-id\"\n",
+    "stdout": ""
+  },
+  "engine": "go",
+  "fixture": "cli-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "memory-rm-absent"
+}

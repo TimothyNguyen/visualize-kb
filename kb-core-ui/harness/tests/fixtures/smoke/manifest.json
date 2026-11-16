@@ -1,0 +1,55 @@
+{
+  "name": "smoke",
+  "repo": "repo",
+  "operations": [
+    {
+      "id": "parse-ok",
+      "kind": "cli",
+      "command": "parse",
+      "capture": "stdout_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "rest-stats",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/stats",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "rest-graph",
+      "kind": "rest",
+      "method": "GET",
+      "route": "/api/graph",
+      "capture": "json_body_status",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "mcp-get-tree",
+      "kind": "mcp",
+      "tool": "get_tree",
+      "capture": "json_result",
+      "normalizers": ["fixture_root_path"]
+    },
+    {
+      "id": "memory-list-after-add",
+      "kind": "cli",
+      "command": "memory_list",
+      "setup": [
+        {
+          "id": "memory-add-seed",
+          "kind": "cli",
+          "command": "memory_add",
+          "args": {
+            "kind": "rule",
+            "title": "smoke-rule",
+            "text": "keep it simple"
+          }
+        }
+      ],
+      "capture": "stdout_exit",
+      "normalizers": ["line_endings", "fixture_root_path", "generated_id", "timestamp"]
+    }
+  ]
+}

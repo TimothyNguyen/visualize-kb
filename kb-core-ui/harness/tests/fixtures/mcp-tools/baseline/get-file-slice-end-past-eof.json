@@ -1,0 +1,15 @@
+{
+  "captured_at": "2026-08-28T19:54:49.472960+00:00",
+  "comparable": {
+    "result": "\treturn c.Total\n}\n\n// Reset zeroes the calculator.\nfunc (c *Calculator) Reset() {\n\tc.Total = DefaultStart\n}\n"
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "get-file-slice-end-past-eof"
+}

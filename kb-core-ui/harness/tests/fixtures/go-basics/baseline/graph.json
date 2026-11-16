@@ -1,0 +1,70 @@
+{
+  "captured_at": "2026-08-28T00:32:52.736384+00:00",
+  "comparable": {
+    "body": {
+      "edges": [
+        {
+          "kind": "contains",
+          "source": "mathutil.go:Calculator",
+          "target": "mathutil.go:Calculator.AddTo"
+        },
+        {
+          "kind": "calls",
+          "source": "mathutil.go:Calculator.AddTo",
+          "target": "mathutil.go:Add"
+        }
+      ],
+      "nodes": [
+        {
+          "endLine": 4,
+          "filePath": "mathutil.go",
+          "id": "mathutil.go:DefaultStart",
+          "kind": "const",
+          "name": "DefaultStart",
+          "startLine": 4
+        },
+        {
+          "endLine": 9,
+          "filePath": "mathutil.go",
+          "id": "mathutil.go:Add",
+          "kind": "function",
+          "name": "Add",
+          "startLine": 7
+        },
+        {
+          "endLine": 14,
+          "filePath": "mathutil.go",
+          "id": "mathutil.go:Adder",
+          "kind": "interface",
+          "name": "Adder",
+          "startLine": 12
+        },
+        {
+          "endLine": 19,
+          "filePath": "mathutil.go",
+          "id": "mathutil.go:Calculator",
+          "kind": "class",
+          "name": "Calculator",
+          "startLine": 17
+        },
+        {
+          "endLine": 25,
+          "filePath": "mathutil.go",
+          "id": "mathutil.go:Calculator.AddTo",
+          "kind": "method",
+          "name": "AddTo",
+          "startLine": 22
+        }
+      ]
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "go-basics",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "graph"
+}

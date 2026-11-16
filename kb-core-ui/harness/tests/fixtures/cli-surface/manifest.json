@@ -1,0 +1,70 @@
+{
+  "name": "cli-surface",
+  "repo": "repo",
+  "operations": [
+    {
+      "id": "help-root",
+      "kind": "cli",
+      "command": "help_root",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "no-args",
+      "kind": "cli",
+      "command": "no_args",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "help-parse",
+      "kind": "cli",
+      "command": "help_parse",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "help-memory",
+      "kind": "cli",
+      "command": "help_memory",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "unknown-command",
+      "kind": "cli",
+      "command": "unknown_command",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "parse-missing-repo",
+      "kind": "cli",
+      "command": "parse_missing_repo",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"],
+      "ignore_fields": ["$.stderr"]
+    },
+    {
+      "id": "parse-too-many-args",
+      "kind": "cli",
+      "command": "parse_too_many_args",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "memory-add-no-title",
+      "kind": "cli",
+      "command": "memory_add_no_title",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    },
+    {
+      "id": "memory-rm-absent",
+      "kind": "cli",
+      "command": "memory_rm_absent",
+      "capture": "stdout_stderr_exit",
+      "normalizers": ["line_endings", "fixture_root_path"]
+    }
+  ]
+}

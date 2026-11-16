@@ -1,0 +1,20 @@
+{
+  "captured_at": "2026-08-28T20:39:04.979381+00:00",
+  "comparable": {
+    "headers": {
+      "access-control-allow-headers": "Content-Type",
+      "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+      "access-control-allow-origin": "*",
+      "content-type": "text/html; charset=utf-8"
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "spa-serving",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "index-headers"
+}

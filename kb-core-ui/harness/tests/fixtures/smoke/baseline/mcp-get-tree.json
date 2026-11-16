@@ -1,0 +1,32 @@
+{
+  "captured_at": "2026-08-28T00:32:57.948852+00:00",
+  "comparable": {
+    "result": {
+      "children": [
+        {
+          "language": "go",
+          "name": "hello.go",
+          "path": "hello.go",
+          "type": "file"
+        },
+        {
+          "language": "python",
+          "name": "hello.py",
+          "path": "hello.py",
+          "type": "file"
+        }
+      ],
+      "name": "",
+      "path": "",
+      "type": "dir"
+    }
+  },
+  "engine": "go",
+  "fixture": "smoke",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "mcp-get-tree"
+}

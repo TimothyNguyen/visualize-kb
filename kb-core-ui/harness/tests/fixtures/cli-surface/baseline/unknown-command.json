@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:43.902716+00:00",
+  "comparable": {
+    "exit_code": 1,
+    "stderr": "Error: unknown command \"bogus\" for \"kb-core-ui\"\nRun 'kb-core-ui --help' for usage.\nkb-core-ui: unknown command \"bogus\" for \"kb-core-ui\"\n",
+    "stdout": ""
+  },
+  "engine": "go",
+  "fixture": "cli-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "unknown-command"
+}

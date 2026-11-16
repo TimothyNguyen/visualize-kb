@@ -1,0 +1,19 @@
+{
+  "captured_at": "2026-08-28T01:34:44.276951+00:00",
+  "comparable": {
+    "exit_code": 1,
+    "stderr": "Error: repo path <FIXTURE_ROOT>\\does-not-exist: GetFileAttributesEx <FIXTURE_ROOT>\\does-not-exist: The system cannot find the file specified.\nUsage:\n  kb-core-ui parse [path] [flags]\n\nFlags:\n      --db string   path to the SQLite graph DB (default: <repo>/.kb-core-ui/graph.db)\n  -h, --help        help for parse\n\nkb-core-ui: repo path <FIXTURE_ROOT>\\does-not-exist: GetFileAttributesEx <FIXTURE_ROOT>\\does-not-exist: The system cannot find the file specified.\n",
+    "stdout": ""
+  },
+  "engine": "go",
+  "fixture": "cli-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [
+    "$.stderr"
+  ],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "parse-missing-repo"
+}

@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-08-28T19:54:49.451344+00:00",
+  "comparable": {
+    "result": [
+      {
+        "edge": {
+          "kind": "calls",
+          "source": "pkg/mathutil.go:Calculator.AddTo",
+          "target": "pkg/mathutil.go:Add"
+        },
+        "symbol": {
+          "endLine": 9,
+          "filePath": "pkg/mathutil.go",
+          "id": "pkg/mathutil.go:Add",
+          "kind": "function",
+          "name": "Add",
+          "startLine": 7
+        }
+      }
+    ]
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "get-callees"
+}

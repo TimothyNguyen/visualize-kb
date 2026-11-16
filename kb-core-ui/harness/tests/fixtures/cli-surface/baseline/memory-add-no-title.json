@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:45.658461+00:00",
+  "comparable": {
+    "exit_code": 1,
+    "stderr": "Error: --title is required\nUsage:\n  kb-core-ui memory add [flags]\n\nFlags:\n      --from-file string   read the body from a file, or '-' for stdin\n  -h, --help               help for add\n      --kind string        rule | lesson | business | overview | reference (default \"lesson\")\n      --repo string        repo the memory belongs to (default \".\")\n      --source string      where this came from (person, file, url, bot)\n      --text string        the memory body\n      --title string       short title (required)\n\nkb-core-ui: --title is required\n",
+    "stdout": ""
+  },
+  "engine": "go",
+  "fixture": "cli-surface",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "memory-add-no-title"
+}

@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-08-28T20:48:04.820067+00:00",
+  "comparable": {
+    "status": 200,
+    "text_body": "<!doctype html>\n<html>\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>kb-core-ui</title>\n    <link rel=\"icon\" href=\"/favicon.svg\" />\n    <link rel=\"stylesheet\" href=\"/assets/app.css\" />\n    <script type=\"module\" src=\"/assets/app.js\"></script>\n  </head>\n  <body><div id=\"root\"></div></body>\n</html>\n"
+  },
+  "engine": "go",
+  "fixture": "spa-serving",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "spa-fallback-deep-route"
+}

@@ -1,0 +1,15 @@
+{
+  "captured_at": "2026-08-28T19:54:49.466608+00:00",
+  "comparable": {
+    "result": "// Add returns the sum of two integers.\nfunc Add(a, b int) int {\n\treturn a + b\n}"
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "line_endings",
+    "fixture_root_path"
+  ],
+  "operation_id": "get-file-slice"
+}

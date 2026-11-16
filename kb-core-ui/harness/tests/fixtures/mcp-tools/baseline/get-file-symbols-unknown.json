@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-08-28T19:54:49.445295+00:00",
+  "comparable": {
+    "result": null
+  },
+  "engine": "go",
+  "fixture": "mcp-tools",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "get-file-symbols-unknown"
+}

@@ -1,0 +1,27 @@
+{
+  "captured_at": "2026-08-28T00:32:51.543938+00:00",
+  "comparable": {
+    "body": {
+      "edges": [],
+      "nodes": [
+        {
+          "endLine": 6,
+          "filePath": "a.go",
+          "id": "a.go:A",
+          "kind": "function",
+          "name": "A",
+          "startLine": 4
+        }
+      ]
+    },
+    "status": 200
+  },
+  "engine": "go",
+  "fixture": "deleted-file",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "graph-after-delete"
+}

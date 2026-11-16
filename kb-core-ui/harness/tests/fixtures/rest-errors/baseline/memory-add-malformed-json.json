@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-08-28T01:34:57.664264+00:00",
+  "comparable": {
+    "body": {
+      "error": "invalid JSON body"
+    },
+    "status": 400
+  },
+  "engine": "go",
+  "fixture": "rest-errors",
+  "harness_version": "0.1.0",
+  "ignore_fields": [],
+  "normalizers": [
+    "fixture_root_path"
+  ],
+  "operation_id": "memory-add-malformed-json"
+}
