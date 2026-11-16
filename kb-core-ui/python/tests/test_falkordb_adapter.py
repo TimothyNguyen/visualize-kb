@@ -139,6 +139,31 @@ def test_upsert_uses_fixed_schema_parameterized_rows_and_timeout() -> None:
     assert "CALLS" not in queries
 
 
+def test_batched_write_limits_each_transaction_to_500_rows() -> None:
+    driver = FakeDriver()
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver)
+
+    adapter._write_rows(
+        "WITH $workspace_id AS workspace_id UNWIND $rows AS row RETURN row, workspace_id",
+        {"workspace_id": "alpha", "rows": [{"id": index} for index in range(1001)]},
+    )
+
+    assert [len(params["rows"]) for _, params, _ in driver.graph.writes] == [500, 500, 1]
+
+
+def test_ingestion_lookup_index_is_created_only_when_missing() -> None:
+    existing = FakeDriver()
+    existing.graph.query_results = [[["KnowledgeNode", ["id"]]]]
+    FalkorDBAdapter(config(), "alpha", driver=existing)._ensure_ingestion_indexes()
+    assert len(existing.graph.writes) == 1
+
+    missing = FakeDriver()
+    missing.graph.query_results = [[]]
+    FalkorDBAdapter(config(), "alpha", driver=missing)._ensure_ingestion_indexes()
+    assert len(missing.graph.writes) == 2
+    assert missing.graph.writes[1][0] == "CREATE INDEX FOR (n:KnowledgeNode) ON (n.id)"
+
+
 def test_adapter_rejects_cross_workspace_envelope_and_parameter() -> None:
     adapter = FalkorDBAdapter(config(), "alpha", driver=FakeDriver())
 
@@ -277,6 +302,10 @@ def test_publish_is_one_atomic_swap_and_recovery_is_source_owned() -> None:
         params["workspace_id"] == "alpha" and params["source_id"] == "repo"
         for _, params, _ in driver.graph.writes
     )
+    rollback_queries = [query for query, _, _ in driver.graph.writes[-3:]]
+    assert "DELETE r" in rollback_queries[0]
+    assert "DETACH DELETE n" in rollback_queries[1]
+    assert "stage_status = 'rolled_back'" in rollback_queries[2]
 
 
 def test_embedding_writes_target_exact_staged_version() -> None:
@@ -331,6 +360,24 @@ def test_ensure_retrieval_indexes_creates_and_verifies_four_indexes() -> None:
     assert "dimension: 3" in queries
     assert "MERGE (m:IndexManifest" in queries
     assert "CALL db.indexes()" in queries
+
+
+def test_ensure_retrieval_indexes_waits_for_async_index_build() -> None:
+    driver = FakeDriver(graph_exists=True)
+    driver.graph.read_results = [[['kb-core.retrieval.v1', 3]]]
+    under_construction = [
+        ["KnowledgeNode", ["embedding"], {"embedding": ["VECTOR"]}, "UNDER CONSTRUCTION"]
+    ]
+    operational = [
+        ["TextChunk", ["text", "embedding"], {"text": ["FULLTEXT"], "embedding": ["VECTOR"]}, "OPERATIONAL"],
+        ["KnowledgeNode", ["label", "text", "embedding"], {"label": ["FULLTEXT"], "text": ["FULLTEXT"], "embedding": ["VECTOR"]}, "OPERATIONAL"],
+    ]
+    driver.graph.query_results = [under_construction, operational]
+    sleeps = []
+    adapter = FalkorDBAdapter(config(), "alpha", driver=driver, sleep=sleeps.append)
+
+    assert adapter.ensure_retrieval_indexes(3, "kb-core.retrieval.v1") == 4
+    assert sleeps == [0.25]
 
 
 def test_write_chat_turn_is_single_scoped_write_returning_sequence() -> None:

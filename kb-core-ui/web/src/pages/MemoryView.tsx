@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react"
 import type { MemoryEntry, MemoryHit, MemoryKind } from "../api/types"
 import { addMemory, deleteMemory, getMemory, searchMemory } from "../api/client"
+import type { ChatMemoryEntry, Workspace } from "../api/workspaces"
+import {
+  deleteChatMemories,
+  listChatMemories,
+  listWorkspaces,
+  searchChatMemories,
+} from "../api/workspaces"
 import "./MemoryView.css"
 
 const KINDS: MemoryKind[] = ["rule", "lesson", "business", "overview", "reference"]
@@ -160,7 +167,155 @@ export function MemoryView() {
           </div>
         )}
       </section>
+
+      <ChatMemorySection />
     </div>
+  )
+}
+
+function ChatMemorySection() {
+  // Workspace selection is component-local here, the same way
+  // WorkspaceChatView does it — there is no app-wide selected workspace.
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [workspaceId, setWorkspaceId] = useState("")
+  const [query, setQuery] = useState("")
+  const [entries, setEntries] = useState<ChatMemoryEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [unavailable, setUnavailable] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    listWorkspaces()
+      .then((items) => {
+        if (cancelled) return
+        setWorkspaces(items)
+        setWorkspaceId((current) => current || (items[0]?.id ?? ""))
+      })
+      .catch(() => {
+        if (!cancelled) setUnavailable(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!workspaceId) return undefined
+    let cancelled = false
+    const trimmed = query.trim()
+    const timer = window.setTimeout(() => {
+      const pending = trimmed
+        ? searchChatMemories(workspaceId, trimmed, 20).then((hits) => hits.map((hit) => hit.entry))
+        : listChatMemories(workspaceId)
+      pending
+        .then((items) => {
+          if (cancelled) return
+          setEntries(items)
+          setError(null)
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return
+          setEntries([])
+          setError(err instanceof Error ? err.message : "failed to load chat memory")
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+    }, SEARCH_DEBOUNCE_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [workspaceId, query, refreshKey])
+
+  async function clearThread(threadId: string) {
+    setError(null)
+    try {
+      await deleteChatMemories(workspaceId, threadId)
+      setLoading(true)
+      setRefreshKey((k) => k + 1)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "failed to clear thread")
+    }
+  }
+
+  if (unavailable || workspaces.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="memory-results">
+      <div className="memory-header">
+        <h2 className="memory-title">Chat memory</h2>
+        <p className="memory-subtitle">
+          Answered chat turns, archived per workspace and searched the same way.
+        </p>
+      </div>
+
+      <form className="memory-search" onSubmit={(e) => e.preventDefault()}>
+        <input
+          className="memory-search-input"
+          type="search"
+          value={query}
+          placeholder="Search this workspace's chat history…"
+          onChange={(e) => {
+            setLoading(true)
+            setQuery(e.target.value)
+          }}
+        />
+        <select
+          className="memory-kind-select"
+          aria-label="Workspace"
+          value={workspaceId}
+          onChange={(e) => {
+            setLoading(true)
+            setWorkspaceId(e.target.value)
+          }}
+        >
+          {workspaces.map((workspace) => (
+            <option key={workspace.id} value={workspace.id}>
+              {workspace.name}
+            </option>
+          ))}
+        </select>
+      </form>
+
+      {error && <div className="memory-error">{error}</div>}
+
+      {loading ? (
+        <div className="memory-empty">Loading…</div>
+      ) : entries.length === 0 ? (
+        <div className="memory-empty">No chat turns archived yet.</div>
+      ) : (
+        <div className="memory-card-list">
+          {entries.map((entry) => (
+            <div key={entry.id} className="memory-card">
+              <div className="memory-card-top">
+                <div className="memory-card-heading">
+                  <span className="memory-card-title">{entry.title}</span>
+                </div>
+                <button
+                  type="button"
+                  className="memory-delete"
+                  title="Clear this thread"
+                  aria-label="Clear this thread"
+                  onClick={() => void clearThread(entry.thread_id)}
+                >
+                  ×
+                </button>
+              </div>
+              <p className="memory-card-text">{entry.text}</p>
+              <div className="memory-card-meta">
+                <span className="memory-card-source">{entry.source}</span>
+                <span className="memory-card-time">{formatTime(entry.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 

@@ -12,6 +12,11 @@ from kb_core_ui.memory.embedder import (
     cosine,
     embedder_from_env,
 )
+from kb_core_ui.memory.chat_store import (
+    ChatMemoryEntry,
+    ChatMemoryHit,
+    ChatMemoryStore,
+)
 from kb_core_ui.memory.store import (
     KIND_BUSINESS,
     KIND_LESSON,
@@ -35,6 +40,9 @@ __all__ = [
     "Entry",
     "Hit",
     "Store",
+    "ChatMemoryEntry",
+    "ChatMemoryHit",
+    "ChatMemoryStore",
     "now",
     "MIN_SCORE",
     "VALID_KINDS",

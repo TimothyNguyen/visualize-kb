@@ -176,3 +176,32 @@
   padding: 9px 11px;
   font-size: 11px;
 }
+.folder-picker {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1rem 0;
+  padding: 0.9rem;
+  border: 1px solid var(--line, #d7d1c7);
+  background: var(--surface-raised, #fffdf8);
+}
+
+.folder-picker-heading {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.folder-picker-heading code {
+  overflow-wrap: anywhere;
+  color: var(--muted, #716b62);
+}
+
+.folder-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.folder-list button {
+  text-align: left;
+}

@@ -9,6 +9,7 @@ import pytest
 from kb_core_ui.indexer import index
 from kb_core_ui.parser.golang import parse_go
 from kb_core_ui.parser.jslang import parse_typescript
+from kb_core_ui.parser.pylang import parse_python
 from kb_core_ui.store import Store
 
 
@@ -62,6 +63,16 @@ def test_upsert_file_replaces_previous_content(store):
     assert store.file_hash("a.go") == ("h2", True)
 
 
+def test_upsert_file_keeps_last_same_file_definition(store):
+    graph = parse_python("a.py", b"def duplicate():\n    return 1\n\ndef duplicate():\n    return 2\n")
+
+    store.upsert_file(graph, "h1")
+
+    symbols = store.symbols_in_file("a.py")
+    assert len(symbols) == 1
+    assert symbols[0].start_line == 4
+
+
 def test_symbol_with_no_params_or_returns_is_never_none(store):
     """"func main()" has zero params and zero returns, which round-trips
     through SQLite as JSON "null". Symbol() must normalize that back to [] —
@@ -99,9 +110,11 @@ def test_index_scan_reparse_and_prune(store, tmp_path):
     write(str(repo / "a.go"), "package main\nfunc Add(a, b int) int { return helper(a, b) }\n")
     write(str(repo / "b.go"), "package main\nfunc helper(a, b int) int { return a + b }\n")
     write(str(repo / "node_modules" / "skip.js"), "function skip() {}\n")
+    write(str(repo / ".venv-ui" / "skip.py"), "def skip(): pass\n")
+    write(str(repo / ".worktrees" / "baseline" / "skip.go"), "package skip\nfunc Skip() {}\n")
 
     res = index(str(repo), store)
-    assert res.files_changed == 2, "node_modules should be skipped"
+    assert res.files_changed == 2, "dependency and virtualenv directories should be skipped"
 
     stats = store.stats()
     assert (stats.symbols, stats.edges) == (2, 1)

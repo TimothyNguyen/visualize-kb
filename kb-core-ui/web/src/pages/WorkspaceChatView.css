@@ -322,3 +322,8 @@ a.citation-chip:hover {
     width: 100%;
   }
 }
+.scope-indicator {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--muted, #716b62);
+}

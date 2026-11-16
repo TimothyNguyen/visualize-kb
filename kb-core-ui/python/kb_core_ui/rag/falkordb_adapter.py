@@ -23,6 +23,7 @@ _WORKSPACE_PARAMETER = re.compile(r"\$workspace_id\b")
 _LINE_COMMENT = re.compile(r"//[^\r\n]*")
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _STRING_LITERAL = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"")
+_WRITE_BATCH_SIZE = 500
 
 
 class AdapterError(RuntimeError):
@@ -174,6 +175,14 @@ class FalkorDBAdapter:
                 self.sleep(0.05 * (2**attempt))
         raise AssertionError("retry loop must return or raise")
 
+    def _write_rows(self, query: str, params: Mapping[str, object]) -> None:
+        rows = params.get("rows")
+        if not isinstance(rows, Sequence):
+            raise AdapterError("batched write requires a rows sequence")
+        common = {key: value for key, value in params.items() if key != "rows"}
+        for start in range(0, len(rows), _WRITE_BATCH_SIZE):
+            self._write(query, {**common, "rows": rows[start : start + _WRITE_BATCH_SIZE]})
+
     def health(self) -> AdapterHealth:
         try:
             connected = bool(self._run(self.driver.ping))
@@ -193,6 +202,15 @@ class FalkorDBAdapter:
             "schema_version": "kb-core.rag.v1",
         }
         self._write(query, params)
+
+    def _ensure_ingestion_indexes(self) -> None:
+        rows = self._admin_query(
+            "CALL db.indexes() YIELD label, properties RETURN label, properties",
+            {},
+        )
+        if any(str(label) == "KnowledgeNode" and "id" in properties for label, properties in rows):
+            return
+        self._admin_query("CREATE INDEX FOR (n:KnowledgeNode) ON (n.id)", {})
 
     def delete_graph(self) -> None:
         self._run(self.graph.delete)
@@ -220,6 +238,7 @@ class FalkorDBAdapter:
         self, source_id: str, version: str, content_hash: str, extractor_version: str
     ) -> None:
         self.ensure_graph()
+        self._ensure_ingestion_indexes()
         self._write(
             "MERGE (m:SourceManifest {workspace_id: $workspace_id, source_id: $source_id}) "
             "SET m.staging_version = $version, m.staging_content_hash = $content_hash, "
@@ -241,7 +260,7 @@ class FalkorDBAdapter:
         self.ensure_graph()
         common = {"workspace_id": self.workspace_id, "version": version}
         if envelope.nodes:
-            self._write(
+            self._write_rows(
                 "UNWIND $rows AS row "
                 "MERGE (n:KnowledgeNode {id: row.id, workspace_id: $workspace_id, "
                 "ingestion_version: $version}) "
@@ -263,7 +282,7 @@ class FalkorDBAdapter:
                 },
             )
         if envelope.relationships:
-            self._write(
+            self._write_rows(
                 "UNWIND $rows AS row "
                 "MATCH (a:KnowledgeNode {id: row.source, workspace_id: $workspace_id, "
                 "ingestion_version: $version}) "
@@ -288,7 +307,7 @@ class FalkorDBAdapter:
                 },
             )
         if envelope.chunks:
-            self._write(
+            self._write_rows(
                 "UNWIND $rows AS row "
                 "MERGE (c:TextChunk {id: row.id, workspace_id: $workspace_id, "
                 "ingestion_version: $version}) "
@@ -298,7 +317,7 @@ class FalkorDBAdapter:
                 {**common, "rows": [chunk.to_json_dict() for chunk in envelope.chunks]},
             )
         if envelope.citations:
-            self._write(
+            self._write_rows(
                 "UNWIND $rows AS row "
                 "MERGE (c:Citation {id: row.id, workspace_id: $workspace_id, "
                 "ingestion_version: $version}) "
@@ -412,6 +431,20 @@ class FalkorDBAdapter:
             "ingestion_version: $version}]-() WHERE coalesce(r.active, false) = false DELETE r",
             params,
         )
+        self._write(
+            "MATCH (n {workspace_id: $workspace_id, source_id: $source_id, "
+            "ingestion_version: $version}) "
+            "WHERE (n:KnowledgeNode OR n:TextChunk OR n:Citation) "
+            "AND coalesce(n.active, false) = false DETACH DELETE n",
+            params,
+        )
+        self._write(
+            "MATCH (m:SourceManifest {workspace_id: $workspace_id, source_id: $source_id}) "
+            "WHERE m.staging_version = $version "
+            "SET m.staging_version = null, m.staging_content_hash = null, "
+            "m.staging_extractor_version = null, m.stage_status = 'rolled_back'",
+            params,
+        )
 
     def write_embeddings(
         self,
@@ -428,7 +461,7 @@ class FalkorDBAdapter:
             "version": version,
         }
         if chunk_rows:
-            self._write(
+            self._write_rows(
                 "UNWIND $rows AS row "
                 "MATCH (c:TextChunk {id: row.id, workspace_id: $workspace_id, "
                 "source_id: $source_id, ingestion_version: $version}) "
@@ -436,7 +469,7 @@ class FalkorDBAdapter:
                 {**common, "rows": list(chunk_rows)},
             )
         if node_rows:
-            self._write(
+            self._write_rows(
                 "UNWIND $rows AS row "
                 "MATCH (n:KnowledgeNode {id: row.id, workspace_id: $workspace_id, "
                 "source_id: $source_id, ingestion_version: $version}) "
@@ -490,24 +523,6 @@ class FalkorDBAdapter:
                     "dimension": dimension,
                 },
             )
-        rows = self._admin_query(
-            "CALL db.indexes() YIELD label, properties, types, status "
-            "WHERE label IN ['TextChunk', 'KnowledgeNode'] "
-            "RETURN label, properties, types, status",
-            {"workspace_id": self.workspace_id},
-        )
-        actual: dict[str, dict[str, set[str]]] = {}
-        for label, properties, types, status in rows:
-            if str(status).upper() != "OPERATIONAL":
-                continue
-            label_types = actual.setdefault(str(label), {})
-            if isinstance(types, Mapping):
-                for prop, values in types.items():
-                    label_types.setdefault(str(prop), set()).update(map(str, values))
-            else:
-                for prop, values in zip(properties, types):
-                    nested = values if isinstance(values, (list, tuple, set)) else [values]
-                    label_types.setdefault(str(prop), set()).update(map(str, nested))
         required = {
             "TextChunk": {"text": "FULLTEXT", "embedding": "VECTOR"},
             "KnowledgeNode": {
@@ -516,15 +531,37 @@ class FalkorDBAdapter:
                 "embedding": "VECTOR",
             },
         }
-        missing = [
-            f"{label}.{prop}:{kind}"
-            for label, properties in required.items()
-            for prop, kind in properties.items()
-            if kind not in actual.get(label, {}).get(prop, set())
-        ]
-        if missing:
-            raise AdapterError("retrieval indexes incomplete: " + ", ".join(missing))
-        return 4
+        deadline = time.monotonic() + self.config.query_timeout_seconds
+        while True:
+            rows = self._admin_query(
+                "CALL db.indexes() YIELD label, properties, types, status "
+                "WHERE label IN ['TextChunk', 'KnowledgeNode'] "
+                "RETURN label, properties, types, status",
+                {"workspace_id": self.workspace_id},
+            )
+            actual: dict[str, dict[str, set[str]]] = {}
+            for label, properties, types, status in rows:
+                if str(status).upper() != "OPERATIONAL":
+                    continue
+                label_types = actual.setdefault(str(label), {})
+                if isinstance(types, Mapping):
+                    for prop, values in types.items():
+                        label_types.setdefault(str(prop), set()).update(map(str, values))
+                else:
+                    for prop, values in zip(properties, types):
+                        nested = values if isinstance(values, (list, tuple, set)) else [values]
+                        label_types.setdefault(str(prop), set()).update(map(str, nested))
+            missing = [
+                f"{label}.{prop}:{kind}"
+                for label, properties in required.items()
+                for prop, kind in properties.items()
+                if kind not in actual.get(label, {}).get(prop, set())
+            ]
+            if not missing:
+                return 4
+            if time.monotonic() >= deadline:
+                raise AdapterError("retrieval indexes incomplete: " + ", ".join(missing))
+            self.sleep(0.25)
 
     def fulltext_search(
         self, query: str, limit: int, source_ids: Sequence[str]
@@ -610,20 +647,6 @@ class FalkorDBAdapter:
             lambda: self.graph.query(query, params=scoped, timeout=self.timeout_ms)
         )
         return _rows(result)
-        self._write(
-            "MATCH (n {workspace_id: $workspace_id, source_id: $source_id, "
-            "ingestion_version: $version}) "
-            "WHERE (n:KnowledgeNode OR n:TextChunk OR n:Citation) "
-            "AND coalesce(n.active, false) = false DETACH DELETE n",
-            params,
-        )
-        self._write(
-            "MATCH (m:SourceManifest {workspace_id: $workspace_id, source_id: $source_id}) "
-            "WHERE m.staging_version = $version "
-            "SET m.staging_version = null, m.staging_content_hash = null, "
-            "m.staging_extractor_version = null, m.stage_status = 'rolled_back'",
-            params,
-        )
 
     def _upsert_active_envelope(self, envelope: GraphEnvelope) -> None:
         self.ensure_graph()

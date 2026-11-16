@@ -4,6 +4,7 @@ import {
   addWorkspaceSource,
   getIngestionRun,
   getWorkspaceStats,
+  lookupFolder,
   isRunTerminal,
   listWorkspaces,
   refreshWorkspaceSource,
@@ -14,6 +15,7 @@ import {
   type WorkspaceSourceKind,
   type WorkspaceStats,
 } from "../api/workspaces"
+import { readWorkspaceScope, writeWorkspaceScope } from "../utils/workspaceScope"
 import "./IngestionView.css"
 
 const POLL_INTERVAL_MS = 60
@@ -29,6 +31,9 @@ export function IngestionView() {
   const [run, setRun] = useState<IngestionRun | null>(null)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState("")
+  const [selectedSourceId, setSelectedSourceId] = useState("")
+  const [folder, setFolder] = useState<{ path: string; parent: string; directories: { name: string; path: string }[] } | null>(null)
+  const [folderError, setFolderError] = useState("")
   const [draft, setDraft] = useState<{ id: string; kind: WorkspaceSourceKind; uri: string }>({
     id: "",
     kind: "local_repo",
@@ -46,9 +51,14 @@ export function IngestionView() {
     () =>
       listWorkspaces().then((items) => {
         setWorkspaces(items)
+        const scope = readWorkspaceScope()
         setWorkspaceId((current) =>
-          items.some((item) => item.id === current) ? current : (items[0]?.id ?? ""),
+          items.some((item) => item.id === current)
+            ? current
+            : (items.some((item) => item.id === scope.workspaceId) ? scope.workspaceId : (items[0]?.id ?? "")),
         )
+        const scopedWorkspace = items.find((item) => item.id === scope.workspaceId) ?? items[0]
+        setSelectedSourceId(scope.sourceIds.find((id) => scopedWorkspace?.sources[id]) ?? Object.keys(scopedWorkspace?.sources ?? {})[0] ?? "")
       }),
     [],
   )
@@ -89,6 +99,24 @@ export function IngestionView() {
     setStats(null)
     setRun(null)
     setError("")
+    const next = workspaces.find((workspace) => workspace.id === id)
+    const sourceId = Object.keys(next?.sources ?? {})[0] ?? ""
+    setSelectedSourceId(sourceId)
+    writeWorkspaceScope({ workspaceId: id, sourceIds: sourceId ? [sourceId] : [] })
+  }
+
+  function selectSource(id: string): void {
+    setSelectedSourceId(id)
+    writeWorkspaceScope({ workspaceId, sourceIds: id ? [id] : [] })
+  }
+
+  async function browse(path = ""): Promise<void> {
+    setFolderError("")
+    try {
+      setFolder(await lookupFolder(path))
+    } catch (failed) {
+      setFolderError(errorMessage(failed))
+    }
   }
 
   async function guard(token: string, action: () => Promise<void>): Promise<void> {
@@ -113,6 +141,7 @@ export function IngestionView() {
         uri: draft.uri.trim(),
       })
       await load()
+      selectSource(draft.id.trim())
       setDraft({ id: "", kind: draft.kind, uri: "" })
     })
   }
@@ -168,14 +197,44 @@ export function IngestionView() {
           value={draft.uri}
           onChange={(event) => setDraft({ ...draft, uri: event.target.value })}
         />
+        <button type="button" onClick={() => void browse(draft.uri.trim())} disabled={busy !== ""}>Lookup folder</button>
         <button type="submit" disabled={busy !== ""}>{busy === "source" ? "Adding..." : "Add source"}</button>
       </form>
+
+      {folder && (
+        <section className="folder-picker" aria-label="Folder lookup">
+          <div className="folder-picker-heading">
+            <b>Folder lookup</b>
+            <code>{folder.path}</code>
+          </div>
+          <button type="button" onClick={() => void browse(folder.parent)} disabled={folder.parent === folder.path}>Up</button>
+          <div className="folder-list">
+            {folder.directories.map((directory) => (
+              <button key={directory.path} type="button" onClick={() => {
+                setDraft((current) => ({ ...current, uri: directory.path }))
+                void browse(directory.path)
+              }}>
+                {directory.name}/
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => setDraft((current) => ({ ...current, uri: folder.path }))}>Use this folder</button>
+        </section>
+      )}
+      {folderError && <div className="workspace-error" role="alert">{folderError}</div>}
 
       <section className="source-list" aria-label="Workspace sources">
         <h2>Sources</h2>
         {sources.length === 0 && <p className="empty-note">No sources yet.</p>}
         {sources.map((source) => (
           <div className="source-row" key={source.id}>
+            <input
+              type="radio"
+              name="selected-source"
+              aria-label={`Use ${source.id}`}
+              checked={selectedSourceId === source.id}
+              onChange={() => selectSource(source.id)}
+            />
             <span className="source-id">{source.id}</span>
             <span className="source-uri">{source.uri}</span>
             <span className={`source-status status-${source.status}`}>{source.status}</span>

@@ -22,8 +22,12 @@ from kb_core_ui.store import Store
 SKIP_DIRS = {
     ".git", "node_modules", "vendor", "dist", "build",
     ".next", "__pycache__", "venv", ".venv", "target",
-    ".kb-core-ui",
+    ".kb-core-ui", ".worktrees",
 }
+
+
+def _skip_dir(name: str) -> bool:
+    return name in SKIP_DIRS or name.startswith(".venv-")
 
 
 @dataclass
@@ -45,7 +49,7 @@ def _walk(directory: str):
             # Descend immediately rather than after the sibling files, so a
             # directory's subtree lands between its lexical neighbours exactly
             # as filepath.WalkDir orders it.
-            if entry.name not in SKIP_DIRS:
+            if not _skip_dir(entry.name):
                 yield from _walk(entry.path)
         else:
             yield entry.path
