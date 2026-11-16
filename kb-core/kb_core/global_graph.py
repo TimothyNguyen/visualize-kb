@@ -48,15 +48,8 @@ def _save_manifest(manifest: dict) -> None:
 
 def _load_global_graph() -> nx.Graph:
     if _GLOBAL_GRAPH.exists():
-        from kb_core.security import check_graph_file_size_cap
-        check_graph_file_size_cap(_GLOBAL_GRAPH)
-        data = json.loads(_GLOBAL_GRAPH.read_text(encoding="utf-8"))
-        if "links" not in data and "edges" in data:
-            data = dict(data, links=data["edges"])
-        try:
-            return _jg.node_link_graph(data, edges="links")
-        except TypeError:
-            return _jg.node_link_graph(data)
+        from kb_core.build import load_graph_json
+        return load_graph_json(_GLOBAL_GRAPH, preserve_type=True)
     return nx.Graph()
 
 
@@ -82,7 +75,13 @@ def global_add(source_path: Path, repo_tag: str) -> dict:
     Returns a summary dict with keys: repo_tag, nodes_added, nodes_removed, skipped.
     Skipped=True means the source graph hasn't changed since last add.
     """
-    from kb_core.build import prefix_graph_for_global, prune_repo_from_graph
+    from kb_core.build import (
+        load_graph_json,
+        merge_prefixed_into,
+        prefix_graph_for_global,
+        promote_to_multidigraph,
+        prune_repo_from_graph,
+    )
 
     if not source_path.exists():
         raise FileNotFoundError(f"graph not found: {source_path}")
@@ -102,16 +101,9 @@ def global_add(source_path: Path, repo_tag: str) -> dict:
     if existing.get("source_hash") == src_hash:
         return {"repo_tag": repo_tag, "nodes_added": 0, "nodes_removed": 0, "skipped": True}
 
-    # Load source graph
-    from kb_core.security import check_graph_file_size_cap
-    check_graph_file_size_cap(source_path)
-    data = json.loads(source_path.read_text(encoding="utf-8"))
-    if "links" not in data and "edges" in data:
-        data = dict(data, links=data["edges"])
-    try:
-        src_G = _jg.node_link_graph(data, edges="links")
-    except TypeError:
-        src_G = _jg.node_link_graph(data)
+    # Load source graph, keeping its own type so a multigraph member's parallel
+    # edges are not collapsed on the way into the global graph.
+    src_G = load_graph_json(source_path, preserve_type=True)
 
     # Prefix IDs for cross-project isolation
     prefixed = prefix_graph_for_global(src_G, repo_tag)
@@ -120,30 +112,12 @@ def global_add(source_path: Path, repo_tag: str) -> dict:
     G = _load_global_graph()
     removed = prune_repo_from_graph(G, repo_tag)
 
-    # Merge external-library nodes (no source_file) by label to avoid duplication
-    external_labels = {
-        d.get("label", ""): n
-        for n, d in G.nodes(data=True)
-        if not d.get("source_file") and d.get("label")
-    }
-    # Map each deduplicated external onto the existing global node so that
-    # edges incident to it can be rewired instead of dropped.
-    remap = {}
-    for node, data in prefixed.nodes(data=True):
-        if not data.get("source_file") and data.get("label") in external_labels:
-            remap[node] = external_labels[data["label"]]
+    if prefixed.is_multigraph() and not G.is_multigraph():
+        G = promote_to_multidigraph(G)
+    elif G.is_multigraph() and not prefixed.is_multigraph():
+        prefixed = promote_to_multidigraph(prefixed)
 
-    # Compose: add prefixed nodes (except deduplicated externals) into global graph
-    for node, data in prefixed.nodes(data=True):
-        if node not in remap:
-            G.add_node(node, **data)
-    for u, v, data in prefixed.edges(data=True):
-        u = remap.get(u, u)
-        v = remap.get(v, v)
-        if u != v:  # don't introduce self-loops via remapping
-            G.add_edge(u, v, **data)
-
-    added = prefixed.number_of_nodes() - len(remap)
+    added = merge_prefixed_into(G, prefixed)
     _save_global_graph(G)
 
     manifest["repos"][repo_tag] = {

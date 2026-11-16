@@ -498,7 +498,16 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
         )
         lines.append(f"MERGE (n:{ftype} {{id: '{node_id_esc}', label: '{label}'}});")
     lines.append("")
-    for u, v, data in G.edges(data=True):
+    multigraph = G.is_multigraph()
+    if multigraph:
+        # Sort by the content-derived key so the script is byte-stable no matter
+        # what adjacency order the in-memory graph happens to carry (to_json
+        # canonicalises graph.json, so a reloaded graph iterates differently from
+        # the one that was just built).
+        edges = sorted(G.edges(keys=True, data=True), key=lambda e: (str(e[0]), str(e[1]), str(e[2])))
+    else:
+        edges = ((u, v, None, data) for u, v, data in G.edges(data=True))
+    for u, v, key, data in edges:
         rel = _cypher_label(
             (data.get("relation", "RELATES_TO") or "RELATES_TO").upper(),
             "RELATES_TO",
@@ -506,9 +515,16 @@ def to_cypher(G: nx.Graph, output_path: str) -> None:
         conf = _cypher_escape(data.get("confidence", "EXTRACTED"))
         u_esc = _cypher_escape(u)
         v_esc = _cypher_escape(v)
+        # Without a per-edge identity, MERGE folds every parallel edge between a
+        # pair into one relationship — the whole point of multigraph mode is lost
+        # on import. The key is content-derived, so re-running MERGE against the
+        # same graph stays idempotent instead of appending duplicates.
+        props = f"confidence: '{conf}'"
+        if multigraph:
+            props += f", kb_core_key: '{_cypher_escape(str(key))}'"
         lines.append(
             f"MATCH (a {{id: '{u_esc}'}}), (b {{id: '{v_esc}'}}) "
-            f"MERGE (a)-[:{rel} {{confidence: '{conf}'}}]->(b);"
+            f"MERGE (a)-[:{rel} {{{props}}}]->(b);"
         )
     with open(output_path, "w", encoding="utf-8") as f:  # nosec
         f.write("\n".join(lines))
@@ -1206,9 +1222,11 @@ def to_canvas(
             all_edges_weighted.append((weight, u, v, label))
 
     all_edges_weighted.sort(key=lambda x: -x[0])
-    for weight, u, v, label in all_edges_weighted[:200]:
+    # Index the id: parallel edges share (u, v), and Obsidian keys its canvas
+    # edges by id, so an un-suffixed id silently drops all but one of them.
+    for index, (weight, u, v, label) in enumerate(all_edges_weighted[:200]):
         canvas_edges.append({
-            "id": f"e_{u}_{v}",
+            "id": f"e_{u}_{v}_{index}",
             "fromNode": f"n_{u}",
             "toNode": f"n_{v}",
             "label": label,
@@ -1275,9 +1293,12 @@ def to_graphml(
     for node_id in H.nodes():
         for key, val in list(H.nodes[node_id].items()):
             H.nodes[node_id][key] = _graphml_safe(val)
-    for u, v in H.edges():
-        for key, val in list(H.edges[u, v].items()):
-            H.edges[u, v][key] = _graphml_safe(val)
+    # Mutate the live attribute dict rather than indexing H.edges[u, v]: on a
+    # multigraph that subscript needs a key, and the bare (u, v) pairs would
+    # repeat for parallel edges anyway.
+    for _, _, attrs in H.edges(data=True):
+        for key, val in list(attrs.items()):
+            attrs[key] = _graphml_safe(val)
 
     # Write atomically: a mid-serialization error otherwise leaves a 0-byte
     # .graphml on disk that downstream tooling mistakes for a completed export

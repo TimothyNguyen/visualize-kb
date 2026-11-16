@@ -1657,8 +1657,15 @@ def _rebuild_code(
 
         # Inherit the existing graph's directed flag (#2342) so `kb_core
         # update` can't silently downgrade a directed graph to undirected -
-        # build_from_json defaults to directed=False otherwise.
-        G = build_from_json(result, directed=bool((existing_graph_data or {}).get("directed", False)))
+        # build_from_json defaults to directed=False otherwise. The multigraph
+        # flag is inherited for the same reason: a rebuild that dropped it would
+        # collapse every parallel edge the graph was built to keep.
+        G = build_from_json(
+            result,
+            directed=bool((existing_graph_data or {}).get("directed", False)),
+            root=project_root,
+            multigraph=bool((existing_graph_data or {}).get("multigraph", False)),
+        )
         candidate_topology = _topology_from_graph(G)
         if existing_graph_data:
             try:

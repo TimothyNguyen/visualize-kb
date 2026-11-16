@@ -13,7 +13,7 @@ from typing import NamedTuple
 import networkx as nx
 from networkx.readwrite import json_graph
 from kb_core.security import sanitize_label, check_graph_file_size_cap
-from kb_core.build import edge_data, edge_datas
+from kb_core.build import edge_datas
 from kb_core.paths import default_graph_json as _default_graph_json
 
 try:
@@ -1859,24 +1859,28 @@ def _build_server(graph_path: str):
                 f" at={sanitize_label(str(d.get('source_file') or ''))}:{sanitize_label(loc)}"
                 if loc else ""
             )
+        # edge_datas, not edge_data: a pair joined several ways (a caller that
+        # also imports, or parallel edges in a multigraph) otherwise reports
+        # whichever relation the edge view happened to yield first, and a
+        # relation_filter silently misses the neighbor entirely.
         for nb in G.successors(nid):
-            d = edge_data(G, nid, nb)
-            rel = d.get("relation", "")
-            if rel_filter and rel_filter not in rel.lower():
-                continue
-            lines.append(
-                f"  --> {sanitize_label(G.nodes[nb].get('label', nb))} "
-                f"[{sanitize_label(str(rel))}] [{sanitize_label(str(d.get('confidence', '')))}]{_edge_at(d)}"
-            )
+            for d in edge_datas(G, nid, nb):
+                rel = d.get("relation", "")
+                if rel_filter and rel_filter not in rel.lower():
+                    continue
+                lines.append(
+                    f"  --> {sanitize_label(G.nodes[nb].get('label', nb))} "
+                    f"[{sanitize_label(str(rel))}] [{sanitize_label(str(d.get('confidence', '')))}]{_edge_at(d)}"
+                )
         for nb in G.predecessors(nid):
-            d = edge_data(G, nb, nid)
-            rel = d.get("relation", "")
-            if rel_filter and rel_filter not in rel.lower():
-                continue
-            lines.append(
-                f"  <-- {sanitize_label(G.nodes[nb].get('label', nb))} "
-                f"[{sanitize_label(str(rel))}] [{sanitize_label(str(d.get('confidence', '')))}]{_edge_at(d)}"
-            )
+            for d in edge_datas(G, nb, nid):
+                rel = d.get("relation", "")
+                if rel_filter and rel_filter not in rel.lower():
+                    continue
+                lines.append(
+                    f"  <-- {sanitize_label(G.nodes[nb].get('label', nb))} "
+                    f"[{sanitize_label(str(rel))}] [{sanitize_label(str(d.get('confidence', '')))}]{_edge_at(d)}"
+                )
         budget = int(arguments.get("token_budget", 2000))
         return _cut_lines_to_budget(
             lines, budget, "Narrow with relation_filter or use get_node for a specific symbol"

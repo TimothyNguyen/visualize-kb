@@ -29,6 +29,13 @@ DEFAULT_AFFECTED_RELATIONS = (
     "mixes_in",
     "embeds",
     "requires",
+    # Cross-repo relations declared in a cluster spec. Blast radius is exactly
+    # what a cluster graph exists to answer, and a caller in another repo is no
+    # less affected than one in this file. `depends_on` stays opt-in: a package
+    # manifest dependency edge fans out to every consumer of a library and
+    # swamps the result.
+    "calls_api",
+    "mirrors",
 )
 
 
@@ -42,6 +49,11 @@ class AffectedHit:
     # existing constructors/tests working; None falls back to the node's def line.
     via_file: "str | None" = None
     via_location: "str | None" = None
+    # Every matched relation between this node and the one it was reached from.
+    # A pair can be connected several ways at once (a caller that also imports,
+    # or two parallel `calls` in multigraph mode); via_relation names only the
+    # one the walk stepped on, which understates the coupling.
+    via_relations: tuple[str, ...] = ()
 
 
 def _node_label(graph: nx.Graph, node_id: str) -> str:
@@ -232,6 +244,12 @@ def affected_nodes(
                 for source, target, data in graph.edges(data=True)
                 if target == current
             )
+        # Group by source before reporting: a pair can be joined by several
+        # matching edges at once (a caller that also imports; two parallel
+        # `calls` in multigraph mode). Taking whichever one the edge view
+        # happened to yield first made the reported relation depend on
+        # insertion order, and hid the others entirely.
+        matches: dict[str, list[dict]] = {}
         for source, _target, data in incoming:
             relation = str(data.get("relation", ""))
             if relation not in relation_set:
@@ -239,6 +257,21 @@ def affected_nodes(
             source = str(source)
             if source in seen:
                 continue
+            matches.setdefault(source, []).append(data)
+
+        # Source order stays first-appearance; only the choice WITHIN a source
+        # is sorted, so single-edge results are byte-identical to before.
+        for source, edges in matches.items():
+            edges = sorted(
+                edges,
+                key=lambda d: (
+                    str(d.get("relation", "")),
+                    str(d.get("source_file") or ""),
+                    str(d.get("source_location") or ""),
+                ),
+            )
+            data = edges[0]
+            relation = str(data.get("relation", ""))
             seen.add(source)
             # Carry the matched edge's location (taken from the SAME edge dict
             # whose relation passed the filter, so relation and location stay
@@ -248,6 +281,9 @@ def affected_nodes(
                 source, current_depth + 1, relation,
                 via_file=str(data.get("source_file") or "") or None,
                 via_location=str(data.get("source_location") or "") or None,
+                via_relations=tuple(
+                    dict.fromkeys(str(d.get("relation", "")) for d in edges)
+                ),
             )
             hits.append(hit)
             queue.append((source, current_depth + 1))
@@ -286,15 +322,18 @@ def format_affected(
             location = f"{hit.via_file or data.get('source_file') or '-'}:{hit.via_location}"
         else:
             location = _format_location(data)  # honest fallback: the node's own def line
+        # Show every way the pair is connected, not just the traversed one.
+        shown = ", ".join(hit.via_relations) if hit.via_relations else hit.via_relation
         lines.append(
-            f"- {_node_label(graph, hit.node_id)} [{hit.via_relation}] {location}"
+            f"- {_node_label(graph, hit.node_id)} [{shown}] {location}"
         )
     return "\n".join(lines)
 
 
 def load_graph(path: Path) -> nx.Graph:
     import json
-    from networkx.readwrite import json_graph
+
+    from kb_core.build import load_graph_json
 
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -304,15 +343,6 @@ def load_graph(path: Path) -> nx.Graph:
             "Re-run 'kb-core extract' to regenerate it."
         ) from exc
     # Force directed so stored caller→callee direction survives the round-trip;
-    # mirrors serve.py and __main__.py (#1174).
-    raw = {**raw, "directed": True}
-    # Normalize the edge key: kb_core's `extract` output uses "edges" while
-    # networkx's node_link_data default is "links". Without this, an edges-keyed
-    # graph.json raises an uncaught KeyError: 'links' here — every other loader
-    # (__main__.py) already normalizes this (#738; same class as #1198).
-    if "links" not in raw and "edges" in raw:
-        raw = dict(raw, links=raw["edges"])
-    try:
-        return json_graph.node_link_graph(raw, edges="links")
-    except TypeError:
-        return json_graph.node_link_graph(raw)
+    # mirrors serve.py and __main__.py (#1174). preserve_type keeps a cluster's
+    # multigraph parallel edges, which the traversal now reports individually.
+    return load_graph_json(raw, preserve_type=True, directed=True)
