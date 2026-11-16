@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -189,3 +192,55 @@ def test_all_capture_kinds(go_bin, tmp_fixtures_dir: Path, tmp_path: Path):
     assert by_op["parse-ok"].diff.equal  # stdout_exit
     assert by_op["rest-stats"].diff.equal  # json_body_status
     assert by_op["mcp-get-tree"].diff.equal  # json_result
+
+
+def test_mutated_legacy_go_build_fails_python_parity(go_bin, fixtures_dir, tmp_path):
+    """Prove a Go-only change goes red without editing the read-only archive."""
+    go = shutil.which("go")
+    if not go:
+        pytest.skip("negative control requires the Go compiler")
+    module = Path(__file__).resolve().parents[2] / "legacy/go"
+    main = module / "cmd/kb-core-ui/main.go"
+    original = main.read_bytes()
+    replacement = tmp_path / "main.go"
+    replacement.write_text(
+        original.decode("utf-8").replace(
+            "func main() {",
+            'func main() {\n\tfmt.Fprintln(os.Stdout, "T13-negative-control")',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    overlay = tmp_path / "overlay.json"
+    overlay.write_text(json.dumps({"Replace": {str(main): str(replacement)}}), encoding="utf-8")
+    mutated = tmp_path / ("oracle.exe" if os.name == "nt" else "oracle")
+    build = subprocess.run(
+        [go, "build", "-overlay", str(overlay), "-o", str(mutated), "./cmd/kb-core-ui"],
+        cwd=module, capture_output=True, text=True, encoding="utf-8", timeout=180,
+    )
+    assert build.returncode == 0, build.stderr
+    metadata = subprocess.run(
+        [go, "version", "-m", go_bin],
+        capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    assert metadata.returncode == 0, metadata.stderr
+    assert "kb-core-ui/cmd/kb-core-ui" in metadata.stdout
+
+    fixture = tmp_path / "fixtures/cli-surface"
+    shutil.copytree(fixtures_dir / "cli-surface", fixture)
+    manifest_path = fixture / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["operations"] = [op for op in manifest["operations"] if op.get("command") == "help_root"]
+    assert len(manifest["operations"]) == 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    args = make_args(
+        "parity", fixtures_dir=str(fixture.parent), work_dir=str(tmp_path / "work"),
+        out_dir=str(tmp_path / "out"), oracle="go", candidate="python", go_bin=go_bin,
+    )
+    assert run_parity(args) == 0
+    args.go_bin = str(mutated)
+    assert run_parity(args) == 1
+    report = read_report(tmp_path / "out/report.json")
+    assert (report.passed, report.failed, report.errored) == (0, 1, 0)
+    assert "T13-negative-control" in str(report.results[0].diff)
+    assert main.read_bytes() == original

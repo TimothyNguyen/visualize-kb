@@ -3,7 +3,7 @@
 `record` writes every baseline from one shared RunContext per fixture, so a
 mutating operation earlier in the manifest is visible to a later one. If
 `verify` gave each operation its own throwaway context, any stateful fixture
-would fail against preconditions the recording never had (SPEC.md B7).
+would fail against preconditions the recording never had (spec/SPEC.md B7).
 """
 
 from __future__ import annotations

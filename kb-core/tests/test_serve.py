@@ -7,6 +7,7 @@ import networkx as nx
 from networkx.readwrite import json_graph
 
 from kb_core.serve import (
+    QueryExecution,
     _strip_diacritics,
     _communities_from_graph,
     _score_nodes,
@@ -71,6 +72,46 @@ def test_communities_from_graph_isolated():
     communities = _communities_from_graph(G)
     assert 2 in communities
     assert "n5" in communities[2]
+
+
+def test_load_graph_accepts_graph_without_schema_version(tmp_path):
+    graph_path = tmp_path / "graph.json"
+    graph_path.write_text(
+        json.dumps(
+            {
+                "directed": False,
+                "nodes": [{"id": "legacy", "label": "legacy"}],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    graph = _load_graph(str(graph_path))
+
+    assert list(graph.nodes) == ["legacy"]
+
+
+def test_query_graph_text_uses_shared_query_execution(monkeypatch):
+    G = nx.Graph()
+    G.add_node("n1", label="authentication", source_file="auth.py", source_location="L1")
+    execution = QueryExecution(["n1"], {"n1"}, [], [], "none")
+    calls = []
+
+    def fake_run_query(graph, question, *, mode="bfs", depth=3, context_filters=None):
+        calls.append((question, mode, depth, context_filters))
+        return execution
+
+    monkeypatch.setattr("kb_core.serve._run_query", fake_run_query)
+    monkeypatch.setattr(
+        "kb_core.serve._filter_graph_by_context",
+        lambda *args, **kwargs: pytest.fail("_query_graph_text must not refilter graph"),
+    )
+
+    text = _query_graph_text(G, "authentication", depth=2)
+
+    assert "authentication" in text
+    assert calls == [("authentication", "bfs", 2, None)]
 
 
 # --- _score_nodes ---
@@ -661,6 +702,28 @@ def test_query_graph_text_explicit_context_filter_changes_traversal():
     assert "Context: call (explicit)" in text
     assert "cluster" in text
     assert "build" not in text
+
+
+def test_query_graph_text_renders_filtered_parallel_edge_attributes():
+    G = nx.MultiGraph()
+    G.add_node("source", label="source", source_file="source.py", source_location="L1")
+    G.add_node("target", label="target", source_file="target.py", source_location="L1")
+    # Put excluded edge first. Rendering original graph would select it via
+    # `_subgraph_to_text`'s first-edge fallback for multigraphs.
+    G.add_edge("source", "target", relation="contains", context="import", confidence="EXTRACTED")
+    G.add_edge("source", "target", relation="calls", context="call", confidence="EXTRACTED")
+
+    text = _query_graph_text(
+        G,
+        "source",
+        mode="bfs",
+        depth=1,
+        context_filters=["call"],
+    )
+
+    assert "EDGE source --calls [EXTRACTED context=call]--> target" in text
+    assert "contains" not in text
+    assert "context=import" not in text
 
 
 def test_query_graph_text_heuristic_context_filter_changes_traversal():

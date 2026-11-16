@@ -6,6 +6,7 @@ import networkx as nx
 from networkx.readwrite import json_graph
 
 from kb_core.benchmark import run_benchmark, print_benchmark, _query_subgraph_tokens, _SAMPLE_QUESTIONS, _safe, _hr
+from kb_core.serve import QueryExecution
 
 
 def _make_graph() -> nx.Graph:
@@ -45,6 +46,48 @@ def test_query_bfs_expands_neighbors():
     tokens_deep = _query_subgraph_tokens(G, "authentication", depth=3)
     tokens_shallow = _query_subgraph_tokens(G, "authentication", depth=1)
     assert tokens_deep >= tokens_shallow
+
+
+def test_query_subgraph_tokens_uses_production_query_path(monkeypatch):
+    G = _make_graph()
+    calls = []
+
+    def fake_run_query(graph, question, *, mode="bfs", depth=3, context_filters=None):
+        calls.append((graph, question, mode, depth, context_filters))
+        return QueryExecution(["n1"], {"n1", "n2"}, [("n1", "n2")], [], "none")
+
+    monkeypatch.setattr("kb_core.benchmark._run_query", fake_run_query)
+
+    result = _query_subgraph_tokens(G, "authentication", depth=1)
+
+    assert result > 0
+    assert calls == [(G, "authentication", "bfs", 1, None)]
+
+
+def test_query_subgraph_tokens_serializes_traversal_graph(monkeypatch):
+    G = _make_graph()
+    traversal_graph = nx.Graph()
+    traversal_graph.add_nodes_from(G.nodes(data=True))
+    execution = QueryExecution(
+        ["n1"],
+        {"n1", "n2"},
+        [("n1", "n2")],
+        [],
+        "none",
+        traversal_graph,
+    )
+    rendered_graphs = []
+
+    monkeypatch.setattr("kb_core.benchmark._run_query", lambda *args, **kwargs: execution)
+
+    def fake_subgraph_to_text(graph, *args, **kwargs):
+        rendered_graphs.append(graph)
+        return "NODE authentication"
+
+    monkeypatch.setattr("kb_core.benchmark._subgraph_to_text", fake_subgraph_to_text)
+
+    assert _query_subgraph_tokens(G, "authentication", depth=1) > 0
+    assert rendered_graphs == [traversal_graph]
 
 
 def test_query_keeps_short_non_english_terms():

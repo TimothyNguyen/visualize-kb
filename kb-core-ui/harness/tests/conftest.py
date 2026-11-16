@@ -17,7 +17,7 @@ def go_bin() -> str:
     except EngineError:
         pytest.skip(
             "no kb-core-ui binary found — build with "
-            "`go build -o kb-core-ui.exe ./cmd/kb-core-ui` from kb-core-ui/"
+            "`go build -o kb-core-ui.exe ./cmd/kb-core-ui` from kb-core-ui/legacy/go/"
         )
 
 

@@ -50,8 +50,33 @@ def test_resolve_go_binary_raises_helpful_error_when_missing(monkeypatch: pytest
     fake_engines_file = tmp_path / "somewhere" / "harness" / "harness" / "engines.py"
     fake_engines_file.parent.mkdir(parents=True)
     monkeypatch.setattr("harness.engines.__file__", str(fake_engines_file))
-    with pytest.raises(EngineError, match="go build"):
+    with pytest.raises(EngineError, match="from kb-core-ui/legacy/go/"):
         resolve_go_binary(None)
+
+
+@pytest.mark.parametrize("stale_root_build", [False, True])
+def test_go_oracle_never_uses_python_console_script_on_path(monkeypatch, tmp_path, stale_root_build):
+    monkeypatch.delenv("KB_CORE_UI_BIN", raising=False)
+    root = tmp_path / "kb-core-ui"
+    root.mkdir()
+    monkeypatch.setattr("harness.engines.__file__", str(root / "harness/harness/engines.py"))
+    # Both a stale root-level Go build and a Python entry point must be ignored.
+    if stale_root_build:
+        (root / "kb-core-ui.exe").touch()
+        (root / "kb-core-ui").touch()
+    monkeypatch.setattr("shutil.which", lambda name: "/venv/bin/kb-core-ui")
+    with pytest.raises(EngineError, match="legacy/go"):
+        resolve_go_binary()
+
+
+@pytest.mark.parametrize("name", ["kb-core-ui.exe", "kb-core-ui"])
+def test_go_oracle_resolves_legacy_build(monkeypatch, tmp_path, name):
+    monkeypatch.delenv("KB_CORE_UI_BIN", raising=False)
+    monkeypatch.setattr("harness.engines.__file__", str(tmp_path / "harness/harness/engines.py"))
+    binary = tmp_path / "legacy/go" / name
+    binary.parent.mkdir(parents=True)
+    binary.touch()
+    assert resolve_go_binary() == str(binary)
 
 
 def test_bin_override_for_reads_named_argparse_attr():

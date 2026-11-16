@@ -1,5 +1,8 @@
 name: PR Review Bot
 
+# Inactive example: GitHub only loads workflows from the repository root.
+# Do not enable this paid AI workflow without reviewing its permissions/cost.
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -19,12 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-python@v5
         with:
-          go-version-file: go.mod
+          python-version: "3.11"
 
-      - name: Build kb-core-ui
-        run: go build -o kb-core-ui ./cmd/kb-core-ui
+      - name: Install kb-core-ui
+        run: python -m pip install -e ./kb-core-ui/python
 
       - name: Install claude CLI
         run: npm install -g @anthropic-ai/claude-code
@@ -41,4 +44,4 @@ jobs:
             echo "::warning::ANTHROPIC_API_KEY secret is not set — skipping PR review. See bots/README.md."
             exit 0
           fi
-          ./kb-core-ui bot pr-review "${{ github.event.pull_request.number }}"
+          kb-core-ui bot pr-review "${{ github.event.pull_request.number }}"

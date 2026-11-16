@@ -1,7 +1,7 @@
 """Tool declarations and result envelopes.
 
 The shapes here are not free choices: `tools/list` is a recorded baseline
-(SPEC.md I.mcp), and mark3labs/mcp-go generates those schemas from its
+(spec/SPEC.md I.mcp), and mark3labs/mcp-go generates those schemas from its
 mcp.WithString/WithNumber builders. Tool, Param and the result helpers below
 reproduce what that generator emits, so a new tool is declared the same way
 on both sides instead of being hand-written JSON that drifts.

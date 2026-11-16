@@ -1565,6 +1565,12 @@ def _rebuild_code(
                 # `result` (the raw merged extraction) never carries one.
                 "directed": bool((existing_graph_data or {}).get("directed", False)),
             }
+            from kb_core.export import stamp_graph_metadata as _stamp_graph_metadata
+            _stamp_graph_metadata(
+                candidate_graph_data,
+                built_at_commit=commit,
+                preserve_from=existing_graph_data,
+            )
             candidate_graph_text = _json_text(candidate_graph_data)
             same_graph = False
             if existing_graph.exists():

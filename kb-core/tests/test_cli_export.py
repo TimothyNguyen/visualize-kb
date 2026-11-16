@@ -407,6 +407,55 @@ def test_update_no_cluster_writes_raw_graph(tmp_path):
     assert all("community" not in node for node in data["nodes"])
 
 
+def test_merge_driver_writes_schema_and_preserves_commit_with_edges_input(
+    tmp_path, monkeypatch
+):
+    import kb_core.__main__ as mainmod
+
+    base = tmp_path / "base.json"
+    current = tmp_path / "current.json"
+    other = tmp_path / "other.json"
+    base.write_text("{}", encoding="utf-8")
+    current.write_text(
+        json.dumps(
+            {
+                "directed": False,
+                "nodes": [{"id": "current", "label": "current"}],
+                "edges": [],
+                "built_at_commit": "current-commit",
+            }
+        ),
+        encoding="utf-8",
+    )
+    other.write_text(
+        json.dumps(
+            {
+                "directed": False,
+                "nodes": [{"id": "other", "label": "other"}],
+                "links": [],
+                "built_at_commit": "other-commit",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        mainmod.sys,
+        "argv",
+        ["kb-core", "merge-driver", str(base), str(current), str(other)],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        mainmod.main()
+
+    assert exc_info.value.code == 0
+    data = json.loads(current.read_text(encoding="utf-8"))
+    assert data["graph_schema_version"] == 1
+    assert "links" in data
+    assert "edges" not in data
+    assert {node["id"] for node in data["nodes"]} == {"current", "other"}
+    assert data["built_at_commit"] == "current-commit"
+
+
 # Regression test for #934 - cluster-only crashes when kb_core-out/ doesn't exist
 
 def test_cluster_only_creates_output_dir_when_missing(tmp_path):

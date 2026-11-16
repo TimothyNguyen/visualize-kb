@@ -63,15 +63,27 @@ class RestSession:
 
     def _request(self, url: str, method: str, data: bytes | None = None, headers: dict | None = None) -> RestResult:
         req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                raw = resp.read()
-                status = resp.status
-                headers = dict(resp.headers.items())
-        except urllib.error.HTTPError as exc:
-            raw = exc.read()
-            status = exc.code
-            headers = dict(exc.headers.items())
+        # Windows can reset an otherwise healthy Go listener while it handles
+        # a malformed/unknown route. Retry only requests with no side effects;
+        # replaying a real POST could duplicate a memory write.
+        retryable = method in {"GET", "HEAD"} or (method == "POST" and data in {b"", b"{}"})
+        for attempt in range(2 if retryable else 1):
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    raw = resp.read()
+                    status = resp.status
+                    headers = dict(resp.headers.items())
+                break
+            except urllib.error.HTTPError as exc:
+                raw = exc.read()
+                status = exc.code
+                headers = dict(exc.headers.items())
+                break
+            except ConnectionResetError:
+                if attempt == 0 and retryable:
+                    time.sleep(0.05)
+                    continue
+                raise EngineError(f"REST {method} {url} connection reset")
         # Static assets are not text; decode leniently so a binary body still
         # yields a comparable length without corrupting the JSON paths.
         body = raw.decode("utf-8", errors="replace")

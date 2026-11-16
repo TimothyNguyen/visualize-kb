@@ -22,6 +22,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import common
+
 
 @dataclass
 class Check:
@@ -122,7 +124,7 @@ def check_claude_mcp(kb_core_ui_bin: str | None, repo: Path) -> Check:
     if claude auth passed, but the MCP handshake itself is checked
     independently via the kb-core-ui binary."""
     if not kb_core_ui_bin:
-        return Check("kb-core-ui MCP server", False, "no kb-core-ui binary located", "build with `go build -o kb-core-ui ./cmd/kb-core-ui`")
+        return Check("kb-core-ui MCP server", False, "no Python kb-core-ui entry point located", "install with `python -m pip install -e ./python` from kb-core-ui/, or pass --kb-core-ui-bin")
 
     # Drive the MCP server directly over stdio (no claude needed) to prove
     # the server half of the connection works regardless of model auth.
@@ -157,13 +159,10 @@ def check_claude_mcp(kb_core_ui_bin: str | None, repo: Path) -> Check:
 
 
 def find_kb_core_ui_bin(explicit: str | None = None) -> str | None:
-    if explicit:
-        return explicit
-    repo_root = Path(__file__).resolve().parent.parent
-    local = repo_root / "kb-core-ui"
-    if local.exists() and os.access(local, os.X_OK):
-        return str(local)
-    return shutil.which("kb-core-ui")
+    try:
+        return common.find_kb_core_ui_bin(explicit)
+    except RuntimeError:
+        return None
 
 
 def run_checks(repo: Path, kb_core_ui_bin: str | None = None, include_mcp: bool = True) -> list[Check]:

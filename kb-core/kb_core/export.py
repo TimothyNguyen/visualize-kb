@@ -32,6 +32,23 @@ _BACKUP_ARTIFACTS = [
     "cost.json",
 ]
 
+GRAPH_SCHEMA_VERSION = 1
+
+
+def stamp_graph_metadata(
+    data: dict,
+    *,
+    built_at_commit: str | None = None,
+    preserve_from: dict | None = None,
+) -> dict:
+    """Stamp graph schema metadata without dropping existing provenance."""
+    if built_at_commit is None and isinstance(preserve_from, dict):
+        built_at_commit = preserve_from.get("built_at_commit")
+    data["graph_schema_version"] = GRAPH_SCHEMA_VERSION
+    if built_at_commit is not None:
+        data["built_at_commit"] = built_at_commit
+    return data
+
 
 def backup_if_protected(out_dir: Path) -> "Path | None":
     """Snapshot graph artifacts to a dated subfolder before an overwrite.
@@ -403,8 +420,7 @@ def to_json(G: nx.Graph, communities: dict[int, list[str]], output_path: str, *,
     # (output_path lives in <target>/kb_core-out/), never the shell's cwd —
     # the same cwd-anchoring mistake #2316 fixed for `update`.
     commit = built_at_commit if built_at_commit is not None else _git_head(Path(output_path).resolve().parent)
-    if commit:
-        data["built_at_commit"] = commit
+    stamp_graph_metadata(data, built_at_commit=commit)
     from kb_core.paths import write_json_atomic
     # Atomic write: a crash/ENOSPC mid-write must not truncate a good graph.json.
     write_json_atomic(output_path, data, indent=2)
